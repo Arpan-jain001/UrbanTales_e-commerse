@@ -1,6 +1,6 @@
 import Order from "../models/Order.js";
 import Cart from "../models/Cart.js";
-import { v4 as uuidv4 } from "uuid"; // install uuid package
+import { v4 as uuidv4 } from "uuid";
 
 export const createOrder = async (req, res) => {
   try {
@@ -32,6 +32,7 @@ export const createOrder = async (req, res) => {
     await cart.save();
     res.status(201).json({ message: "Order created successfully", order: newOrder });
   } catch (error) {
+    console.error('ORDER CREATE ERROR:', error);
     res.status(500).json({ message: "Server error creating order", errorMessage: error.message });
   }
 };
@@ -50,7 +51,6 @@ export const cancelOrder = async (req, res) => {
     const { id } = req.params;
     const order = await Order.findOne({ _id: id, userId: req.userId });
     if (!order) return res.status(404).json({ message: "Order not found" });
-    // Allow cancel only if status matches business logic
     if (!["Placed", "Shipped", "Out for Delivery", "Pending"].includes(order.orderStatus)) {
       return res.status(400).json({ message: "Order cannot be cancelled" });
     }

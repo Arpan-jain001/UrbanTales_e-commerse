@@ -1,40 +1,24 @@
 import Product from "../models/product.js";
 
-// GET all products
-export const getAllProducts = async (req, res) => {
+// GET products by category: /api/products/:category
+export const listByCategory = async (req, res) => {
   try {
-    const { category } = req.query;
-
-    let filter = {};
-    if (category) {
-      filter.category = category;
-    }
-
-    const products = await Product.find(filter).sort({ createdAt: -1 });
+    const { category } = req.params;
+    const products = await Product.find({ category: new RegExp(`^${category}$`, 'i') }).sort({ createdAt: -1 });
     res.status(200).json(products);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch products' });
+  } catch (e) {
+    res.status(500).json({ message: "Cannot fetch products" });
   }
 };
 
-// POST create a product
-export const createProduct = async (req, res) => {
+// GET single product: /api/products/id/:id
+export const getOne = async (req, res) => {
   try {
-    const newProduct = new Product(req.body);
-    const saved = await newProduct.save();
-    res.status(201).json(saved);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to create product' });
-  }
-};
-
-// DELETE product by ID
-export const deleteProduct = async (req, res) => {
-  try {
-    const { id } = req.params;
-    await Product.findByIdAndDelete(id);
-    res.status(200).json({ msg: 'Product deleted' });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to delete product' });
+    const _id = req.params.id;
+    const prod = await Product.findById(_id);
+    if (!prod) return res.status(404).json({ message: "Product not found" });
+    res.status(200).json(prod);
+  } catch (e) {
+    res.status(500).json({ message: "Cannot get product" });
   }
 };

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { HashLoader } from "react-spinners";
 
 const logoUrl =
-  "https://i.postimg.cc/bJCVGD0W/Urban-Tales.png";
+  "https://drive.google.com/uc?export=view&id=1XxU_zf3_ZBDjuEWqGorEYUgBTzjoyaW_";
 
 export default function ResetPasswordRequest() {
   const [email, setEmail] = useState("");
