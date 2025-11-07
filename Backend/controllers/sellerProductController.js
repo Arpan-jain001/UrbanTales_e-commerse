@@ -1,9 +1,9 @@
-import Product from "../models/product.js";
+import Product from "../models/Product.js";
 
 // GET /api/sellers/products
 export const list = async (req, res) => {
   try {
-    let filter = { sellerId: req.seller._id };
+    const filter = { sellerId: req.seller._id };
     if (req.query.category) filter.category = req.query.category;
     const products = await Product.find(filter).sort({ createdAt: -1 });
     res.status(200).json(products);
@@ -16,11 +16,18 @@ export const list = async (req, res) => {
 export const add = async (req, res) => {
   try {
     const { name, category, description, stock, price, image, delivery } = req.body;
-    if (!name || !category || !stock || !price)
+    if (!name || !category || !stock || !price) {
       return res.status(400).json({ message: "All required fields must be provided!" });
+    }
     const product = new Product({
       sellerId: req.seller._id,
-      name, category, description, stock, price, image, delivery
+      name,
+      category,
+      description,
+      stock,
+      price,
+      image,
+      delivery
     });
     await product.save();
     res.status(201).json(product);
@@ -33,11 +40,18 @@ export const add = async (req, res) => {
 export const addProductWithStock = async (req, res) => {
   try {
     const { name, category, description, stock, price, image, delivery } = req.body;
-    if (!name || !category || !stock || !price)
+    if (!name || !category || !stock || !price) {
       return res.status(400).json({ message: "All required fields must be provided!" });
+    }
     const product = new Product({
       sellerId: req.seller._id,
-      name, category, description, stock, price, image, delivery
+      name,
+      category,
+      description,
+      stock,
+      price,
+      image,
+      delivery
     });
     await product.save();
     res.status(201).json(product);

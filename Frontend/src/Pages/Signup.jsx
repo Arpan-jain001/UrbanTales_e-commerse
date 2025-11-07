@@ -16,6 +16,7 @@ const Signup = () => {
     confirmPassword: "",
   });
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -23,26 +24,29 @@ const Signup = () => {
       ...prev,
       [e.target.name]: e.target.value,
     }));
+    setError(""); // Clear error on input change
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-
     if (formData.password !== formData.confirmPassword) {
-      return setError("Passwords don't match");
+      setError("Passwords don't match");
+      return;
     }
 
+    setSubmitting(true);
+    setError("");
     try {
       const { data } = await axios.post(
         `${BASE_API_URL}/api/users/signup`,
         formData
       );
-
       alert("Signup successful. Please sign in.");
       navigate("/login");
     } catch (err) {
       setError(err.response?.data?.message || "Something went wrong");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -112,9 +116,10 @@ const Signup = () => {
 
               <button
                 type="submit"
-                className="w-full bg-[#070A52] text-white py-2 rounded hover:bg-[#FFCC00] transition"
+                disabled={submitting}
+                className="w-full bg-[#070A52] text-white py-2 rounded hover:bg-[#FFCC00] transition disabled:opacity-50"
               >
-                Sign Up
+                {submitting ? "Signing up..." : "Sign Up"}
               </button>
             </form>
           </div>

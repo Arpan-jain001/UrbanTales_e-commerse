@@ -4,6 +4,8 @@ import { HashLoader } from "react-spinners";
 import Navbar from "../Components/Navbar";
 import Footer from "../Components/Footer";
 
+const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
+
 export default function EditProfile() {
   const navigate = useNavigate();
 
@@ -90,7 +92,7 @@ export default function EditProfile() {
         return;
       }
 
-      const res = await fetch("http://localhost:3000/api/users/profile", {
+      const res = await fetch(`${BACKEND_API_URL}/api/users/profile`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

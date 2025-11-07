@@ -6,12 +6,13 @@ const productSchema = new mongoose.Schema({
   sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "Seller", required: true },
   description: String,
   price: { type: Number, required: true },
-  image: String,             // Keep for backward compatibility
-  images: [String],          // New: Multiple image URLs
-  videos: [String],          // New: Multiple video URLs
+  image: String,
+  images: [String],
+  videos: [String],
   stock: { type: Number, required: true },
   delivery: String,
   createdAt: { type: Date, default: Date.now }
 });
 
-export default mongoose.model("Product", productSchema);
+// SAFE EXPORT! (Prevents overwrite error)
+export default mongoose.models.Product || mongoose.model("Product", productSchema);

@@ -161,12 +161,13 @@ const Footer = () => {
                       I'm converting them to `<button>` with a placeholder `onClick`.
                       If they are meant to be links, use <Link> with a 'to' prop.
           */}
-          <button type="button" onClick={() => alert('Navigate to Advertise page/section')} className="flex items-center gap-2 cursor-pointer hover:underline bg-transparent border-none text-white p-0 font-sans text-sm">
-            <span className="text-yellow-400 text-lg">&#11088;</span> Advertise
-          </button>
-          <button type="button" onClick={() => alert('Navigate to Gift Cards page/section')} className="flex items-center gap-2 cursor-pointer hover:underline bg-transparent border-none text-white p-0 font-sans text-sm">
-            <span className="text-yellow-400 text-lg">&#127873;</span> Gift Cards
-          </button>
+          <Link to="/under-construction" className="flex items-center gap-2 cursor-pointer hover:underline">
+  <span className="text-yellow-400 text-lg">&#11088;</span> Advertise
+</Link>
+
+<Link to="/under-construction" className="flex items-center gap-2 cursor-pointer hover:underline">
+  <span className="text-yellow-400 text-lg">&#127873;</span> Gift Cards
+</Link>
 
           <Link to="/helpcenter" className="flex items-center gap-2 cursor-pointer hover:underline">
             <span className="text-yellow-400 text-lg">&#128188;</span> Help Center

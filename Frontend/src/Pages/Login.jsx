@@ -23,10 +23,10 @@ const Login = () => {
         password,
       });
 
-      localStorage.setItem('isLoggedIn', true);
+      localStorage.setItem('isLoggedIn', "true");
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
-      localStorage.setItem('userId', data.user.id);
+      localStorage.setItem('userId', data.user._id || data.user.id || "");
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed.');
@@ -43,9 +43,10 @@ const Login = () => {
         token: idToken,
       });
 
-      localStorage.setItem('isLoggedIn', true);
+      localStorage.setItem('isLoggedIn', "true");
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
+      localStorage.setItem('userId', response.data.user._id || response.data.user.id || "");
       navigate('/');
     } catch (err) {
       console.error(err);
@@ -96,8 +97,8 @@ const Login = () => {
                   Keep me logged in
                 </label>
                 <Link to="/reset-password" className="text-sm text-blue-600 hover:underline">
-  Forgot password
-</Link>
+                  Forgot password
+                </Link>
               </div>
 
               <button type="submit" className="w-full bg-[#070A52] text-white py-2 rounded hover:bg-[#FFCC00]">Log in</button>

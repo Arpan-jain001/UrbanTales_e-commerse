@@ -1,9 +1,12 @@
-import { signup, login, googleLogin } from "../controllers/sellerAuthController.js";
 import express from "express";
-const router = express.Router();
+import { signup, login, requestPasswordReset, resetPasswordWithOtp, verifyOtp } from "../controllers/sellerAuthController.js";
 
-router.post('/signup', signup);
-router.post('/login', login);
-router.post('/google-login', googleLogin);
+
+const router = express.Router();
+router.post("/signup", signup);
+router.post("/login", login);
+router.post("/forgot-password", requestPasswordReset);
+router.post("/reset-password", resetPasswordWithOtp);
+router.post("/verify-otp", verifyOtp);
 
 export default router;

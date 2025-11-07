@@ -3,6 +3,8 @@ import Navbar from "../Components/Navbar";
 import Footer from "../Components/Footer";
 import { HashLoader } from "react-spinners";
 
+const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
+
 const ProductDetails = () => {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState([]);
@@ -21,7 +23,7 @@ const ProductDetails = () => {
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 1200);
-    fetch("http://localhost:3000/api/products/")
+    fetch(`${BASE_API_URL}/api/products/`)
       .then((res) => res.json())
       .then((data) => setProducts(data))
       .catch(() => {});
@@ -38,7 +40,7 @@ const ProductDetails = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (isAddBtnDisabled) return;
-    fetch("http://localhost:3000/api/products", {
+    fetch(`${BASE_API_URL}/api/products`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(formData)

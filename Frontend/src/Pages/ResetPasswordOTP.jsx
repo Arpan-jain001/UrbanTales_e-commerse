@@ -2,13 +2,15 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { HashLoader } from "react-spinners";
 
+const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
+
 const logoUrl =
   "https://drive.google.com/uc?export=view&id=1XxU_zf3_ZBDjuEWqGorEYUgBTzjoyaW_";
 
 export default function ResetPasswordOTP() {
   const [otp, setOTP] = useState("");
   const [msg, setMsg] = useState("");
-  const [timer, setTimer] = useState(60); // 2 minutes
+  const [timer, setTimer] = useState(60); // 60 seconds countdown
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const params = new URLSearchParams(useLocation().search);
@@ -28,7 +30,7 @@ export default function ResetPasswordOTP() {
     setLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:3000/api/auth/reset-password/verify",
+        `${BASE_API_URL}/api/auth/reset-password/verify`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -60,7 +62,7 @@ export default function ResetPasswordOTP() {
     setMsg("");
     try {
       const res = await fetch(
-        "http://localhost:3000/api/auth/reset-password/request",
+        `${BASE_API_URL}/api/auth/reset-password/request`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

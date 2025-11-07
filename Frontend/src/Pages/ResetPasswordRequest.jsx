@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { HashLoader } from "react-spinners";
 
+const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
+
 const logoUrl =
   "https://drive.google.com/uc?export=view&id=1XxU_zf3_ZBDjuEWqGorEYUgBTzjoyaW_";
 
@@ -17,7 +19,7 @@ export default function ResetPasswordRequest() {
     setLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:3000/api/auth/reset-password/request",
+        `${BASE_API_URL}/api/auth/reset-password/request`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

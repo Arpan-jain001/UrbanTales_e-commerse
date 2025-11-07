@@ -2,10 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { HashLoader } from "react-spinners"; // Import HashLoader
 
-// IMPORTANT: Replace "YOUR_GOOGLE_CLIENT_ID_HERE" with your actual Google Client ID.
-// Obtain this from the Google Google Cloud Console (APIs & Services -> Credentials).
-// Ensure your 'Authorized JavaScript origins' in Google Cloud include your app's URL (e.g., http://localhost:3000).
-const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID_HERE";
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 const AuthPage = () => {
     // State to manage which form (Sign In or Sign Up) is currently active
@@ -120,11 +117,9 @@ const AuthPage = () => {
                     box-shadow: 0 0.625rem 1.5625rem rgba(148, 187, 10, 0.1);
                     border-radius: 0.75rem;
                     overflow: hidden;
-                    /* Add transition for flex-direction change, needs to be on parent */
                     transition: flex-direction 0.5s ease-in-out; /* Smooth transition for reordering */
                 }
 
-                /* Media query for desktop layout adjustments */
                 @media (min-width: 768px) {
                     .main-container {
                         flex-direction: row; /* Default for desktop (auth on left, banner on right) */
@@ -134,21 +129,18 @@ const AuthPage = () => {
                     }
 
                     .banner-section {
-                        /* Border radius adjustments for desktop when layout changes */
                         border-radius: 0.75rem 0 0 0.75rem; /* Default position (right) */
                     }
                     .reverse-layout .banner-section {
                         border-radius: 0 0.75rem 0.75rem 0; /* Flipped position (left) */
                     }
                     .auth-section {
-                        /* Border radius adjustments for desktop when layout changes */
                         border-radius: 0 0.75rem 0.75rem 0; /* Default position (left) */
                     }
                     .reverse-layout .auth-section {
                         border-radius: 0.75rem 0 0 0.75rem; /* Flipped position (right) */
                     }
                 }
-
 
                 .auth-section {
                     padding: 2.5rem;
@@ -333,7 +325,7 @@ const AuthPage = () => {
                         </button>
                     </div>
 
-                    {/* Sign In Form Section (left side) */}
+                    {/* Sign In Form Section */}
                     <div id="signin-form-section" className={`form-section ${activeForm === 'signin' ? 'active' : ''}`}>
                         <form onSubmit={(e) => e.preventDefault()}>
                             <div className="form-group">
@@ -359,7 +351,7 @@ const AuthPage = () => {
                         </form>
                     </div>
 
-                    {/* Sign Up Form Section (right side) */}
+                    {/* Sign Up Form Section */}
                     <div id="signup-form-section" className={`form-section ${activeForm === 'signup' ? 'active' : ''}`}>
                         <form onSubmit={(e) => e.preventDefault()}>
                             <div className="form-group">

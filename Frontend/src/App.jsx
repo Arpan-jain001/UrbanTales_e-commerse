@@ -51,6 +51,10 @@ import SellerOnboarding from "./seller/pages/SellerOnboarding.jsx";
 import SellerOrderStatusTracker from "./seller/components/SellerOrderStatusTracker.jsx";
 import SellerOrderManager from "./seller/pages/SellerOrderManager.jsx";
 import SingleProduct from './Pages/SingleProduct';
+import SellerResetPasswordOTP from "./seller/pages/SellerResetPasswordOTP.jsx";
+import SellerResetPasswordConfirm from "./seller/pages/SellerResetPasswordConfirm.jsx";
+import SellerVerifyOtp from "./seller/pages/SellerVerifyOtp.jsx";
+import UnderConstruction from './Pages/UnderConstruction';
 
 // ==== UTILS ====
 function ScrollToTop() {
@@ -93,6 +97,7 @@ function App() {
               <Route path="/reset-password" element={<ResetPasswordRequest />} />
               <Route path="/reset-password/otp" element={<ResetPasswordOTP />} />
               <Route path="/reset-password/confirm" element={<ResetPasswordConfirm />} />
+              <Route path="/under-construction" element={<UnderConstruction />} />
 
               {/* ===== SELLER PANEL ROUTES ===== */}
               <Route path="/sellerlogin" element={<SellerLogin />} />
@@ -109,6 +114,10 @@ function App() {
               <Route path="/seller/onboarding" element={<SellerOnboarding />} />
               <Route path="/seller/order-tracker/:id" element={<SellerOrderStatusTracker />} />
               <Route path="/seller/orders/manage" element={<SellerOrderManager />} />
+              <Route path="/seller/forgot-password" element={<SellerResetPasswordOTP />} />
+              <Route path="/seller/reset-password" element={<SellerResetPasswordConfirm />} />
+              <Route path="/seller/verify-otp" element={<SellerVerifyOtp />} />
+
               <Route path="/product/:id" element={<SingleProduct />} /> 
 
               {/* Fallback 404 route: add here if needed */}

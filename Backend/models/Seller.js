@@ -9,6 +9,9 @@ const sellerSchema = new mongoose.Schema({
   address: String,
   bio: String,
   password: { type: String, required: true },
+  otp: String,
+  otpExpiry: Date,
   createdAt: { type: Date, default: Date.now }
 });
+
 export default mongoose.model("Seller", sellerSchema);

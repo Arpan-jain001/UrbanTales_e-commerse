@@ -6,7 +6,10 @@
   import { motion } from "framer-motion";
   import { FaBox, FaTruck, FaRegClock, FaRegTimesCircle, FaCheck } from "react-icons/fa";
 
-  const API_BASE = "http://localhost:3000/api";
+  const API_BASE = import.meta.env.VITE_BACKEND_API_URL
+  ? import.meta.env.VITE_BACKEND_API_URL + "/api"
+  : "http://localhost:3000/api";
+
 
   const ORDER_STAGES = [
     "Pending",

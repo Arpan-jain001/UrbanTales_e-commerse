@@ -17,6 +17,12 @@ import sellerAnalyticsRoutes from './routes/sellerAnalyticsRoutes.js';
 import sellerNotificationRoutes from './routes/sellerNotificationRoutes.js';
 import razorpayRoutes from './routes/razorpay.js';
 
+
+import reviewRoutes from './routes/review.routes.js';
+
+
+
+
 dotenv.config();
 const app = express();
 
@@ -37,6 +43,9 @@ app.use("/api/sellers/analytics", sellerAnalyticsRoutes);
 app.use("/api/sellers/notifications", sellerNotificationRoutes);
 
 app.use('/api/razorpay', razorpayRoutes);
+
+app.use('/api/reviews', reviewRoutes);
+
 
 app.get('/', (req, res) => {
     res.send('Hello duniyaa');
