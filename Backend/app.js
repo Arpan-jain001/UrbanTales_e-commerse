@@ -16,7 +16,7 @@ import sellerOrderRoutes from './routes/sellerOrderRoutes.js';
 import sellerAnalyticsRoutes from './routes/sellerAnalyticsRoutes.js';
 import sellerNotificationRoutes from './routes/sellerNotificationRoutes.js';
 import razorpayRoutes from './routes/razorpay.js';
-
+import fileUpload from "express-fileupload";
 
 import reviewRoutes from './routes/review.routes.js';
 
@@ -46,6 +46,8 @@ app.use('/api/razorpay', razorpayRoutes);
 app.use('/api/sellers/auth', sellerAuthRoutes);
 app.use('/api/reviews', reviewRoutes);
 
+app.use(fileUpload({ useTempFiles: true }));
+app.use("/api/upload", uploadRoutes);
 
 app.get('/', (req, res) => {
     res.send('Hello duniyaa');
