@@ -1,8 +1,4 @@
-# netlify.toml
 [build]
-  base    = "Frontend"
+  base = "Frontend"
   command = "npm run build"
-  publish = "dist"
-
-[build.environment]
-  NODE_VERSION = "18"
+  publish = "Frontend/dist"
