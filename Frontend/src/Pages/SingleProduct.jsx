@@ -750,48 +750,57 @@ export default function SingleProduct() {
                   </div>
                 </div>
 
-                                {/* Description with See More + Fade Animation */}
-                <div className="mb-6 relative">
-                  <h3 className="font-semibold text-gray-800 mb-3">Product Description</h3>
+                               {/* Product Description with See More + Fade Animation */}
+<div className="mb-6 relative">
+  <h3 className="font-semibold text-gray-800 mb-3">Product Description</h3>
 
-                  <motion.div
-                    initial={false}
-                    animate={{ height: descExpanded ? "auto" : "3.2rem" }}
-                    transition={{ duration: 0.35, ease: "easeInOut" }}
-                    className="overflow-hidden"
-                  >
-                    <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">{product.description}</p>
-                  </motion.div>
+  {/* Animated Description Container */}
+  <motion.div
+    initial={false}
+    animate={{ height: descExpanded ? "auto" : "3.2rem" }} // 3.2rem लगभग 2 लाइनें (line-height 1.6 * 2) हैं।
+    transition={{ duration: 0.35, ease: "easeInOut" }}
+    className="overflow-hidden"
+  >
+    <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">
+      {/* 'whitespace-pre-line' नई लाइनों को सही से दिखाता है */}
+      {product.description}
+    </p>
+  </motion.div>
 
-                  {!descExpanded && (
-                    <div className="absolute bottom-[2.8rem] left-0 right-0 h-10 bg-linear-to-b from-transparent to-white pointer-events-none"></div>
-                  )}
+  {/* Fade Overlay (Only visible when description is collapsed) */}
+  {!descExpanded && (
+    <div className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none">
+      
+      <div className="w-full h-full bg-gradient-to-t from-white to-transparent"></div>
+    </div>
+  )}
 
-                  <button
-                    onClick={() => setDescExpanded(!descExpanded)}
-                    className="text-blue-600 text-sm font-semibold mt-2 hover:underline"
-                  >
-                    {descExpanded ? 'See Less' : 'See More'}
-                  </button>
-                </div>
+  {/* See More/See Less Button */}
+  <button
+    onClick={() => setDescExpanded(!descExpanded)}
+    className="text-blue-600 text-sm font-semibold mt-2 hover:underline relative z-10" 
+  >
+    {descExpanded ? 'See Less' : 'See More'}
+  </button>
+</div>
 
-                              {/* Action Buttons - Desktop and Mobile */}
-                <div className="flex gap-4 mt-4 lg:mt-auto">
-                  <motion.button
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => addToCart(true)}
-                    className="flex-1 bg-linear-to-r from-yellow-400 to-orange-500 text-white font-semibold py-3 rounded-lg shadow-md hover:shadow-lg transition flex items-center justify-center gap-2"
-                  >
-                    <FaShoppingCart /> ADD TO CART
-                  </motion.button>
-                  <motion.button
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleBuyNow}
-                    className="flex-1 bg-linear-to-r from-orange-500 to-red-500 text-white font-semibold py-3 rounded-lg shadow-md hover:shadow-lg transition flex items-center justify-center gap-2"
-                  >
-                    <FaBolt /> BUY NOW
-                  </motion.button>
-                </div>
+                {/* Action Buttons - Desktop Only */}
+<div className="hidden lg:flex gap-4 mt-4 lg:mt-auto"> 
+  <motion.button
+    whileTap={{ scale: 0.98 }}
+    onClick={() => addToCart(true)}
+    className="flex-1 bg-linear-to-r from-yellow-400 to-orange-500 text-white font-semibold py-3 rounded-lg shadow-md hover:shadow-lg transition flex items-center justify-center gap-2"
+  >
+    <FaShoppingCart /> ADD TO CART
+  </motion.button>
+  <motion.button
+    whileTap={{ scale: 0.98 }}
+    onClick={handleBuyNow}
+    className="flex-1 bg-linear-to-r from-orange-500 to-red-500 text-white font-semibold py-3 rounded-lg shadow-md hover:shadow-lg transition flex items-center justify-center gap-2"
+  >
+    <FaBolt /> BUY NOW
+  </motion.button>
+</div>
               </div>
             </div>
           </div>
@@ -954,14 +963,7 @@ export default function SingleProduct() {
           </button>
         </div>
 
-        {/* ✅ Floating Feedback Button */}
-        <button
-          onClick={() => setShowReviewForm(true)}
-          className="fixed bottom-20 right-4 z-40 rounded-full shadow-lg bg-[#070A52] text-white px-4 py-3 flex items-center gap-2 hover:opacity-90"
-        >
-          <FaCommentDots />
-          Feedback
-        </button>
+       
 
         {/* ✅ Fullscreen viewer (swipe + pinch-to-zoom) */}
         <AnimatePresence>
