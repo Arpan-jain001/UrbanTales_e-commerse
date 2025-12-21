@@ -13,6 +13,9 @@ import helloGeneric from "../../assets/admin/hello-generic.mp3";
 const BASE_API_URL =
   import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
+console.log("BASE_API_URL (runtime) =>", BASE_API_URL);
+
+
 // 🔊 Voice greeting with fallback MP3
 function speakGreeting(name) {
   if (typeof window === "undefined") return;
