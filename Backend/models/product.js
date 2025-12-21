@@ -14,5 +14,5 @@ const productSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// SAFE EXPORT! (Prevents overwrite error)
+
 export default mongoose.models.Product || mongoose.model("Product", productSchema);

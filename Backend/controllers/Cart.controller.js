@@ -4,7 +4,8 @@ import Cart from "../models/Cart.js";
 export const getCart = async (req, res) => {
   try {
     const cart = await Cart.findOne({ userId: req.userId });
-    const subtotal = cart?.items?.reduce((sum, item) => sum + item.price * item.qty, 0) || 0;
+    const subtotal =
+      cart?.items?.reduce((sum, item) => sum + item.price * item.qty, 0) || 0;
     if (!cart) return res.status(200).json({ items: [], subtotal: 0 });
     res.status(200).json({ items: cart.items, subtotal });
   } catch (err) {

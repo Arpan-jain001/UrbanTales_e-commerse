@@ -1,5 +1,8 @@
+// Backend/routes/authRoutes.js
 import express from "express";
 import {
+  registerUser,
+  loginUser,
   requestResetPassword,
   verifyResetOTP,
   resetPassword,
@@ -7,6 +10,10 @@ import {
 import { googleSellerAuth } from "../controllers/google.auth.controller.js";
 
 const router = express.Router();
+
+// AUTH ROUTES (USER)
+router.post("/register", registerUser);      // POST /api/auth/register
+router.post("/login", loginUser);            // POST /api/auth/login
 
 // RESET PASSWORD ROUTES
 router.post("/reset-password/request", requestResetPassword);

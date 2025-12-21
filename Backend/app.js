@@ -11,14 +11,23 @@ import sellerRoutes from './routes/Seller.routes.js';
 import authRoutes from './routes/authRoutes.js';
 import cartRoutes from './routes/Cart.routes.js';
 import orderRoutes from './routes/order.routes.js';
-import sellerAuthRoutes from './routes/sellerAuthRoutes.js';
-import sellerProductRoutes from './routes/sellerProductRoutes.js';
+import sellerAuthRoutes from './routes/sellerAuthRoutes.js'; 
+import sellerProductRoutes from './routes/sellerProductRoutes.js'; 
 import sellerOrderRoutes from './routes/sellerOrderRoutes.js';
 import sellerAnalyticsRoutes from './routes/sellerAnalyticsRoutes.js';
 import sellerNotificationRoutes from './routes/sellerNotificationRoutes.js';
 import razorpayRoutes from './routes/razorpay.js';
 import reviewRoutes from './routes/review.routes.js';
 import uploadRoutes from './routes/uploadRoutes.js'; // ✅ new
+
+// Admin panel
+import adminAuthRoutes from "./routes/adminAuthRoutes.js";
+import adminProductsRoutes from "./routes/adminProductsRoutes.js";
+import adminStatsRoutes from "./routes/adminStatsRoutes.js";
+import adminSellersRoutes from "./routes/adminSellersRoutes.js";
+import adminUsersRoutes from "./routes/adminUsersRoutes.js";
+import adminOrdersRoutes from "./routes/adminOrdersRoutes.js";
+
 
 dotenv.config();
 const app = express();
@@ -53,6 +62,14 @@ app.use('/api/sellers/analytics', sellerAnalyticsRoutes);
 app.use('/api/sellers/notifications', sellerNotificationRoutes);
 app.use('/api/razorpay', razorpayRoutes);
 app.use('/api/reviews', reviewRoutes);
+
+// Admin panel
+app.use("/api/admin", adminAuthRoutes);
+app.use("/api/admin/products", adminProductsRoutes);
+app.use("/api/admin/stats", adminStatsRoutes);
+app.use("/api/admin/sellers", adminSellersRoutes);
+app.use("/api/admin/users", adminUsersRoutes);
+app.use("/api/admin/orders", adminOrdersRoutes);
 
 // ✅ Test route
 app.get('/', (req, res) => {

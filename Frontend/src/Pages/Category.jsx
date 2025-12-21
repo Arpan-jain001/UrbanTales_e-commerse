@@ -1,16 +1,26 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import Navbar from '../Components/Navbar';
-import Footer from '../Components/Footer';
+import Navbar from "../Components/Navbar";
+import Footer from "../Components/Footer";
 import { HashLoader } from "react-spinners";
 import { motion, AnimatePresence } from "framer-motion";
-import { FaStar, FaShoppingCart, FaHeart, FaRegHeart, FaFilter, FaSort, FaBolt, FaTimes } from "react-icons/fa";
+import {
+  FaStar,
+  FaShoppingCart,
+  FaHeart,
+  FaRegHeart,
+  FaFilter,
+  FaSort,
+  FaBolt,
+  FaTimes,
+} from "react-icons/fa";
 
 const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
 export default function Category() {
   const location = useLocation();
   const navigate = useNavigate();
+
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [error, setError] = useState(null);
@@ -20,14 +30,17 @@ export default function Category() {
   const [wishlist, setWishlist] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
 
+  // Fetch products by category
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const category = params.get('cat');
+    const category = params.get("cat");
+
     if (!category) {
       setError("Invalid category");
       setLoading(false);
       return;
     }
+
     setLoading(true);
     fetch(`${BASE_API_URL}/api/products/${category}`)
       .then((res) => {
@@ -50,7 +63,7 @@ export default function Category() {
   useEffect(() => {
     let sorted = [...filteredProducts];
 
-    switch(sortBy) {
+    switch (sortBy) {
       case "price-low-high":
         sorted.sort((a, b) => a.price - b.price);
         break;
@@ -72,11 +85,11 @@ export default function Category() {
 
   // Filter by price range
   const handlePriceFilter = () => {
-    const filtered = products.filter(p =>
-      p.price >= priceRange[0] && p.price <= priceRange[1]
+    const filtered = products.filter(
+      (p) => p.price >= priceRange[0] && p.price <= priceRange[1]
     );
     setFilteredProducts(filtered);
-    setShowFilters(false); // Close filter sidebar after applying
+    setShowFilters(false);
   };
 
   const clearFilters = () => {
@@ -85,26 +98,29 @@ export default function Category() {
     setFilteredProducts(products);
   };
 
+  // Add to cart with login check + token invalid handling
   const addToCart = async (product, e) => {
     e.preventDefault();
     e.stopPropagation();
 
     const token = localStorage.getItem("token");
     if (!token) {
-      alert("You must be logged in.");
+      alert("Please login to add items to cart.");
       navigate("/login");
       return;
     }
 
-    const mainImage = (product.images && product.images.length > 0)
-                      ? product.images[0]
-                      : product.image;
+    const mainImage =
+      product.images && product.images.length > 0
+        ? product.images[0]
+        : product.image;
+
     const item = {
       id: product._id,
       name: product.name,
       price: product.price,
       image: mainImage,
-      qty: 1
+      qty: 1,
     };
 
     try {
@@ -112,17 +128,27 @@ export default function Category() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ item }),
       });
+
       const data = await res.json();
-      alert(data.msg || (res.ok ? "Added to cart!" : "Error"));
+
+      if (res.status === 401 || res.status === 403 || data.message === "Invalid token") {
+        localStorage.removeItem("token");
+        alert("Session expired. Please login again.");
+        navigate("/login");
+        return;
+      }
+
+      alert(data.msg || (res.ok ? "Added to cart!" : "Error adding to cart"));
     } catch {
       alert("Server error");
     }
   };
 
+  // Wishlist toggle (optionally adds to cart for logged in user)
   const toggleWishlist = async (product, e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -130,39 +156,48 @@ export default function Category() {
     const productId = product._id;
 
     if (wishlist.includes(productId)) {
-      setWishlist(wishlist.filter(id => id !== productId));
+      setWishlist(wishlist.filter((id) => id !== productId));
     } else {
       setWishlist([...wishlist, productId]);
 
       const token = localStorage.getItem("token");
       if (token) {
-        const mainImage = (product.images && product.images.length > 0)
-                          ? product.images[0]
-                          : product.image;
+        const mainImage =
+          product.images && product.images.length > 0
+            ? product.images[0]
+            : product.image;
+
         const item = {
           id: product._id,
           name: product.name,
           price: product.price,
           image: mainImage,
-          qty: 1
+          qty: 1,
         };
 
         try {
-          await fetch(`${BASE_API_URL}/api/cart/add`, {
+          const res = await fetch(`${BASE_API_URL}/api/cart/add`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`
+              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({ item }),
           });
+
+          const data = await res.json();
+          if (res.status === 401 || res.status === 403 || data.message === "Invalid token") {
+            localStorage.removeItem("token");
+            navigate("/login");
+          }
         } catch {
-          // Silent failure - no alert
+          // silent failure
         }
       }
     }
   };
 
+  // Loading state
   if (loading) {
     return (
       <>
@@ -174,6 +209,7 @@ export default function Category() {
     );
   }
 
+  // Error state
   if (error) {
     return (
       <>
@@ -195,15 +231,15 @@ export default function Category() {
   }
 
   const params = new URLSearchParams(location.search);
-  const categoryName = params.get('cat');
+  const categoryName = params.get("cat");
 
+  // MAIN RENDER
   return (
     <>
       <Navbar />
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100">
         {/* Premium Hero Section */}
         <div className="relative bg-gradient-to-r from-[#070A52] via-purple-900 to-indigo-900 text-white py-16 overflow-hidden">
-          {/* Animated Background Elements */}
           <div className="absolute inset-0 overflow-hidden opacity-20">
             {[...Array(20)].map((_, i) => (
               <motion.div
@@ -213,16 +249,16 @@ export default function Category() {
                   width: Math.random() * 100 + 50,
                   height: Math.random() * 100 + 50,
                   top: `${Math.random() * 100}%`,
-                  left: `${Math.random() * 100}%`
+                  left: `${Math.random() * 100}%`,
                 }}
                 animate={{
                   y: [0, -30, 0],
-                  opacity: [0.3, 0.6, 0.3]
+                  opacity: [0.3, 0.6, 0.3],
                 }}
                 transition={{
                   duration: Math.random() * 5 + 5,
                   repeat: Infinity,
-                  ease: "easeInOut"
+                  ease: "easeInOut",
                 }}
               />
             ))}
@@ -235,9 +271,11 @@ export default function Category() {
               className="text-center"
             >
               <h1 className="text-5xl md:text-6xl font-bold mb-3 bg-gradient-to-r from-yellow-300 via-pink-300 to-purple-300 bg-clip-text text-transparent">
-                {categoryName ? `${categoryName.charAt(0).toUpperCase() + categoryName.slice(1)}` : "Category"}
+                {categoryName
+                  ? `${categoryName.charAt(0).toUpperCase() + categoryName.slice(1)}`
+                  : "Category"}
               </h1>
-              <motion.p 
+              <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.2 }}
@@ -250,7 +288,7 @@ export default function Category() {
         </div>
 
         {/* Filter Button & Results Bar */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-2xl shadow-lg p-4 mb-8 flex items-center justify-between"
@@ -267,16 +305,16 @@ export default function Category() {
 
           <div className="bg-gradient-to-r from-green-50 to-blue-50 px-4 py-2 rounded-xl">
             <span className="text-gray-700 text-sm font-semibold">
-              Showing <span className="text-purple-600">{filteredProducts.length}</span> of <span className="text-purple-600">{products.length}</span>
+              Showing <span className="text-purple-600">{filteredProducts.length}</span> of{" "}
+              <span className="text-purple-600">{products.length}</span>
             </span>
           </div>
         </motion.div>
 
-        {/* Flipkart-Style Filter Sidebar with Backdrop */}
+        {/* Filter Sidebar */}
         <AnimatePresence>
           {showFilters && (
             <>
-              {/* Backdrop Overlay */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -285,7 +323,6 @@ export default function Category() {
                 className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
               />
 
-              {/* Filter Sidebar */}
               <motion.div
                 initial={{ x: -400 }}
                 animate={{ x: 0 }}
@@ -293,7 +330,6 @@ export default function Category() {
                 transition={{ type: "spring", damping: 25 }}
                 className="fixed left-0 top-0 h-full w-80 md:w-96 bg-white shadow-2xl z-50 overflow-y-auto"
               >
-                {/* Sidebar Header */}
                 <div className="sticky top-0 bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-6 flex items-center justify-between shadow-lg z-10">
                   <div className="flex items-center gap-3">
                     <FaFilter className="text-2xl" />
@@ -309,15 +345,14 @@ export default function Category() {
                   </motion.button>
                 </div>
 
-                {/* Filter Content */}
                 <div className="p-6 space-y-8">
-                  {/* Sort By Section */}
+                  {/* Sort By */}
                   <div>
                     <div className="flex items-center gap-2 mb-4">
                       <div className="bg-gradient-to-r from-purple-500 to-indigo-500 p-2 rounded-lg">
                         <FaSort className="text-white" />
                       </div>
-                       <h3 className="text-lg font-bold text-gray-800">Sort By</h3>
+                      <h3 className="text-lg font-bold text-gray-800">Sort By</h3>
                     </div>
                     <div className="space-y-2">
                       {[
@@ -350,10 +385,9 @@ export default function Category() {
                     </div>
                   </div>
 
-                  {/* Divider */}
-                  <div className="border-t-2 border-gray-200"></div>
+                  <div className="border-t-2 border-gray-200" />
 
-                  {/* Price Range Section */}
+                  {/* Price Range */}
                   <div>
                     <div className="flex items-center gap-2 mb-4">
                       <div className="bg-gradient-to-r from-orange-500 to-red-500 p-2 rounded-lg">
@@ -361,53 +395,66 @@ export default function Category() {
                       </div>
                       <h3 className="text-lg font-bold text-gray-800">Price Range</h3>
                     </div>
-                    
+
                     <div className="space-y-4">
-                      {/* Min Price Input */}
+                      {/* Min */}
                       <div>
-                        <label className="block text-sm font-semibold text-gray-600 mb-2">Minimum Price</label>
+                        <label className="block text-sm font-semibold text-gray-600 mb-2">
+                          Minimum Price
+                        </label>
                         <div className="relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">₹</span>
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">
+                            ₹
+                          </span>
                           <input
                             type="number"
                             placeholder="0"
                             value={priceRange[0]}
-                            onChange={(e) => setPriceRange([parseInt(e.target.value) || 0, priceRange[1]])}
+                            onChange={(e) =>
+                              setPriceRange([parseInt(e.target.value) || 0, priceRange[1]])
+                            }
                             className="w-full pl-8 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 font-medium transition"
                           />
                         </div>
                       </div>
 
-                      {/* Max Price Input */}
+                      {/* Max */}
                       <div>
-                        <label className="block text-sm font-semibold text-gray-600 mb-2">Maximum Price</label>
+                        <label className="block text-sm font-semibold text-gray-600 mb-2">
+                          Maximum Price
+                        </label>
                         <div className="relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">₹</span>
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">
+                            ₹
+                          </span>
                           <input
                             type="number"
                             placeholder="100000"
                             value={priceRange[1]}
-                            onChange={(e) => setPriceRange([priceRange[0], parseInt(e.target.value) || 100000])}
+                            onChange={(e) =>
+                              setPriceRange([
+                                priceRange[0],
+                                parseInt(e.target.value) || 100000,
+                              ])
+                            }
                             className="w-full pl-8 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 font-medium transition"
                           />
                         </div>
                       </div>
 
-                      {/* Price Range Display */}
                       <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-4 rounded-xl">
                         <p className="text-sm text-gray-600 font-medium">Selected Range:</p>
                         <p className="text-lg font-bold text-purple-600">
-                          ₹{priceRange[0].toLocaleString()} - ₹{priceRange[1].toLocaleString()}
+                          ₹{priceRange[0].toLocaleString()} - ₹
+                          {priceRange[1].toLocaleString()}
                         </p>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Sticky Footer with Action Buttons */}
                 <div className="sticky bottom-0 bg-white border-t-2 border-gray-200 p-6 shadow-lg">
                   <div className="flex gap-3">
-                    {/* Clear Filters Button */}
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
@@ -417,7 +464,6 @@ export default function Category() {
                       Clear All
                     </motion.button>
 
-                    {/* Apply Filters Button */}
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
@@ -433,14 +479,14 @@ export default function Category() {
           )}
         </AnimatePresence>
 
-        {/* Premium Products Grid */}
-        <motion.div 
+        {/* Products Grid */}
+        <motion.div
           layout
           className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6"
         >
           <AnimatePresence>
             {filteredProducts.length === 0 ? (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="col-span-full text-center py-16"
@@ -468,21 +514,23 @@ export default function Category() {
                   className="group"
                 >
                   <Link to={`/product/${product._id}`}>
-                    <motion.div 
+                    <motion.div
                       whileHover={{ y: -8 }}
                       className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100"
                     >
-                      {/* Premium Product Image */}
                       <div className="relative aspect-square bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 overflow-hidden">
                         <motion.img
                           whileHover={{ scale: 1.1 }}
                           transition={{ duration: 0.4 }}
-                          src={(product.images && product.images.length > 0) ? product.images[0] : product.image}
+                          src={
+                            product.images && product.images.length > 0
+                              ? product.images[0]
+                              : product.image
+                          }
                           alt={product.name}
                           className="w-full h-full object-contain p-4"
                         />
-                        
-                        {/* Premium Wishlist Button - NOW SILENTLY ADDS TO CART */}
+
                         <motion.button
                           whileHover={{ scale: 1.1 }}
                           whileTap={{ scale: 0.9 }}
@@ -496,28 +544,30 @@ export default function Category() {
                           )}
                         </motion.button>
 
-                        {/* Premium Discount Badge */}
                         {product.originalPrice && (
-                          <motion.div 
+                          <motion.div
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
                             className="absolute top-3 left-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-lg"
                           >
-                            🔥 {Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}% OFF
+                            🔥{" "}
+                            {Math.round(
+                              ((product.originalPrice - product.price) /
+                                product.originalPrice) *
+                                100
+                            )}
+                            % OFF
                           </motion.div>
                         )}
 
-                        {/* Quick View Overlay */}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all duration-300" />
                       </div>
 
-                      {/* Premium Product Info */}
                       <div className="p-4">
                         <h3 className="font-bold text-sm md:text-base text-gray-800 mb-2 line-clamp-2 group-hover:text-purple-600 transition min-h-[2.5rem]">
                           {product.name}
                         </h3>
 
-                        {/* Premium Rating */}
                         <div className="flex items-center gap-2 mb-3">
                           <div className="flex items-center gap-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold shadow-md">
                             <span>4.3</span>
@@ -526,7 +576,6 @@ export default function Category() {
                           <span className="text-xs text-gray-500 font-medium">(234)</span>
                         </div>
 
-                        {/* Premium Price */}
                         <div className="flex items-baseline gap-2 mb-4">
                           <span className="text-xl md:text-2xl font-black bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
                             ₹{product.price}
@@ -538,18 +587,16 @@ export default function Category() {
                           )}
                         </div>
 
-                        {/* Premium Add to Cart Button */}
                         <motion.button
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                           onClick={(e) => addToCart(product, e)}
                           className="w-full bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white py-3 rounded-xl font-bold hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2 relative overflow-hidden group/btn"
                         >
-                          {/* Animated Shine Effect */}
                           <motion.div
                             className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-                            initial={{ x: '-100%' }}
-                            whileHover={{ x: '100%' }}
+                            initial={{ x: "-100%" }}
+                            whileHover={{ x: "100%" }}
                             transition={{ duration: 0.6 }}
                           />
                           <FaShoppingCart className="relative z-10" />
@@ -564,9 +611,9 @@ export default function Category() {
           </AnimatePresence>
         </motion.div>
 
-        {/* Premium Load More Section */}
+        {/* Load More */}
         {filteredProducts.length > 0 && filteredProducts.length >= 20 && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="text-center mt-12"
