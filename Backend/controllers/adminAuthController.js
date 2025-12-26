@@ -3,6 +3,7 @@ import { signAdminJwt } from "../utils/adminJwt.js";
 import {
   sendAdminWelcomeMail,
   sendAdminResetOtpMail,
+  sendAdminRemovalMail,
 } from "../utils/adminMail.js";
 import crypto from "crypto";
 
@@ -98,8 +99,6 @@ export const createAdmin = async (req, res) => {
 export const listAdmins = async (req, res) => {
   try {
     const admins = await Admin.find()
-      // agar SUPER_ADMIN ko hide karna ho to: { role: "ADMIN" } use kar sakta hai
-      // .find({ role: "ADMIN" })
       .select("fullName email username role createdAt")
       .sort({ createdAt: -1 });
 
@@ -107,6 +106,89 @@ export const listAdmins = async (req, res) => {
   } catch (err) {
     console.error("listAdmins error:", err);
     return res.status(500).json({ message: "Failed to fetch admins" });
+  }
+};
+
+// DELETE ADMIN (Super Admin only) - with reason and email notification
+export const deleteAdmin = async (req, res) => {
+  try {
+    const { adminId } = req.params;
+    const { reason } = req.body;
+
+    // Validate reason
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Reason for removal is required",
+      });
+    }
+
+    // Prevent self-deletion
+    if (req.admin._id.toString() === adminId) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot delete your own account",
+      });
+    }
+
+    // Find the admin to delete
+    const adminToDelete = await Admin.findById(adminId);
+
+    if (!adminToDelete) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin not found",
+      });
+    }
+
+    // Prevent deletion of the last Super Admin
+    if (adminToDelete.role === "SUPER_ADMIN") {
+      const superAdminCount = await Admin.countDocuments({
+        role: "SUPER_ADMIN",
+      });
+      if (superAdminCount <= 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot delete the last Super Admin account",
+        });
+      }
+    }
+
+    // Send removal notification email before deleting
+    try {
+      await sendAdminRemovalMail({
+        to: adminToDelete.email,
+        fullName: adminToDelete.fullName,
+        username: adminToDelete.username,
+        reason: reason.trim(),
+        removedBy: req.admin.fullName || req.admin.username,
+      });
+    } catch (emailError) {
+      console.error("Email sending failed but continuing with deletion:", emailError);
+      // Continue with deletion even if email fails
+    }
+
+    // Delete the admin permanently from database
+    await Admin.findByIdAndDelete(adminId);
+
+    res.status(200).json({
+      success: true,
+      message: "Admin removed successfully and notification email sent",
+      deletedAdmin: {
+        id: adminToDelete._id,
+        fullName: adminToDelete.fullName,
+        email: adminToDelete.email,
+        username: adminToDelete.username,
+        role: adminToDelete.role,
+      },
+    });
+  } catch (error) {
+    console.error("Delete admin error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while deleting admin",
+      error: error.message,
+    });
   }
 };
 
@@ -187,16 +269,12 @@ export const changeAdminPassword = async (req, res) => {
 
     const ok = await admin.comparePassword(currentPassword);
     if (!ok)
-      return res
-        .status(400)
-        .json({ message: "Current password incorrect" });
+      return res.status(400).json({ message: "Current password incorrect" });
 
     admin.password = newPassword;
     await admin.save();
 
-    return res
-      .status(200)
-      .json({ message: "Password changed successfully" });
+    return res.status(200).json({ message: "Password changed successfully" });
   } catch (err) {
     console.error("changeAdminPassword error:", err);
     return res.status(500).json({ message: "Server error" });

@@ -36,7 +36,7 @@ function buildProductFilter(query) {
 /**
  * GET /api/admin/products
  * - Server-side pagination + filters
- * - Future ready for status, seller, category, search, sorting
+ * - WITH SELLER POPULATE ← FIX
  */
 router.get("/", adminAuth, async (req, res) => {
   try {
@@ -53,12 +53,19 @@ router.get("/", adminAuth, async (req, res) => {
 
     const [products, total] = await Promise.all([
       Product.find(filter)
+        .populate("sellerId", "shopName fullName email phone") // ← SELLER INFO ADD
         .sort(sort)
         .skip((pageNum - 1) * limitNum)
         .limit(limitNum)
         .lean(),
       Product.countDocuments(filter),
     ]);
+
+    // Debug log
+    console.log('Products with seller info:', products.length);
+    if (products.length > 0) {
+      console.log('Sample seller data:', products[0].sellerId);
+    }
 
     res.status(200).json({
       products,
@@ -74,19 +81,18 @@ router.get("/", adminAuth, async (req, res) => {
 
 /**
  * GET /api/admin/products/:id
- * - Single product detail + optional order stats (future scope)
+ * - Single product detail with seller info
  */
 router.get("/:id", adminAuth, async (req, res) => {
   try {
-    const prod = await Product.findById(req.params.id).lean();
+    const prod = await Product.findById(req.params.id)
+      .populate("sellerId", "shopName fullName email phone") // ← SELLER INFO
+      .lean();
+      
     if (!prod) return res.status(404).json({ message: "Product not found" });
-
-    // Future: product-wise sales summary (optional, can use separate controller)
-    // const stats = await Order.aggregate([...])
 
     res.status(200).json({
       product: prod,
-      // stats,
     });
   } catch (err) {
     console.error("Admin get product error:", err);
@@ -97,7 +103,6 @@ router.get("/:id", adminAuth, async (req, res) => {
 /**
  * PUT /api/admin/products/:id
  * - Admin can edit any seller's product
- * - Keeps history-ready structure: only whitelisted fields editable
  */
 router.put("/:id", adminAuth, async (req, res) => {
   try {
@@ -114,7 +119,6 @@ router.put("/:id", adminAuth, async (req, res) => {
       "images",
       "videos",
       "delivery",
-      // future scope: "status"
     ];
 
     allowed.forEach((field) => {
@@ -123,12 +127,16 @@ router.put("/:id", adminAuth, async (req, res) => {
       }
     });
 
-    // For audit in future: lastModifiedByAdmin
+    // Audit trail
     if (!prod.meta) prod.meta = {};
     prod.meta.lastModifiedByAdminId = req.admin._id;
     prod.meta.lastModifiedAt = new Date();
 
     await prod.save();
+    
+    // Populate seller before sending response
+    await prod.populate("sellerId", "shopName fullName email");
+
     res.status(200).json({
       message: "Product updated successfully",
       product: prod,
@@ -142,7 +150,6 @@ router.put("/:id", adminAuth, async (req, res) => {
 /**
  * DELETE /api/admin/products/:id
  * - Super admin only
- * - Future-safe: mark order items as ProductDeleted so analytics/history safe rahe
  */
 router.delete("/:id", adminAuth, superAdminOnly, async (req, res) => {
   try {
@@ -154,7 +161,7 @@ router.delete("/:id", adminAuth, superAdminOnly, async (req, res) => {
     // 1) Hard delete product
     await Product.findByIdAndDelete(productId);
 
-    // 2) Mark related order items so future analytics me break na aaye
+    // 2) Mark related order items
     await Order.updateMany(
       { "items.id": productId },
       {
@@ -168,7 +175,12 @@ router.delete("/:id", adminAuth, superAdminOnly, async (req, res) => {
     );
 
     res.status(200).json({
-      message: "Product deleted and related order items marked as ProductDeleted",
+      success: true,
+      message: "Product deleted successfully",
+      deletedProduct: {
+        id: prod._id,
+        name: prod.name,
+      },
     });
   } catch (err) {
     console.error("Admin delete product error:", err);

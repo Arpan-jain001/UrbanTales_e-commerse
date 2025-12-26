@@ -7,6 +7,7 @@ import {
   resetAdminPassword,
   changeAdminPassword,
   listAdmins,
+  deleteAdmin,
 } from "../controllers/adminAuthController.js";
 import {
   getAdminProfile,
@@ -27,6 +28,9 @@ router.post("/create", adminAuth, superAdminOnly, createAdmin);
 
 // SUPER ADMIN – list admins
 router.get("/list", adminAuth, superAdminOnly, listAdmins);
+
+// SUPER ADMIN – delete admin
+router.delete("/delete/:adminId", adminAuth, superAdminOnly, deleteAdmin);
 
 // PROFILE (protected)
 router.get("/profile", adminAuth, getAdminProfile);

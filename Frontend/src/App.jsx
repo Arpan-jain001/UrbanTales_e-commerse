@@ -55,6 +55,7 @@ import SellerResetPasswordOTP from "./seller/pages/SellerResetPasswordOTP.jsx"; 
 import SellerResetPasswordConfirm from "./seller/pages/SellerResetPasswordConfirm.jsx"; // ✅
 import SellerVerifyOtp from "./seller/pages/SellerVerifyOtp.jsx"; // ✅
 import UnderConstruction from './Pages/UnderConstruction'; // ✅
+import SellerNotifications from "./seller/pages/SellerNotifications";
 
 // ==== ALL ADMIN PAGES ====
 import { AdminAuthProvider } from "./admin/context/AdminAuthContext.jsx"; // ✅ MISSING
@@ -71,6 +72,8 @@ import AdminProfile from "./admin/pages/AdminProfile.jsx";
 import AdminForgotPassword from "./admin/pages/AdminForgotPassword.jsx";
 import AdminVerifyOtp from "./admin/pages/AdminVerifyOtp.jsx";
 import AdminResetPassword from "./admin/pages/AdminResetPassword.jsx";
+import AdminNotifications from "./admin/pages/AdminNotifications";
+
 
 
 // ==== UTILS ====
@@ -135,13 +138,14 @@ function App() {
                 <Route path="/seller/forgot-password" element={<SellerResetPasswordOTP />} />
                 <Route path="/seller/reset-password" element={<SellerResetPasswordConfirm />} />
                 <Route path="/seller/verify-otp" element={<SellerVerifyOtp />} />
-
+                <Route path="/seller/notifications" element={<SellerNotifications />} />
+                
                 {/* ADMIN PUBLIC */}
                 <Route path="/admin/login" element={<AdminLogin />} />
                 <Route path="/admin/forgot-password" element={<AdminForgotPassword />} />
                 <Route path="/admin/verify-otp" element={<AdminVerifyOtp />} />
                 <Route path="/admin/reset-password" element={<AdminResetPassword />} />
-
+                
                 {/* ADMIN PROTECTED */}
                 <Route element={<AdminProtectedRoute />}>
                   <Route element={<AdminLayout />}>
@@ -150,6 +154,7 @@ function App() {
                     <Route path="/admin/users" element={<AdminUsers />} />
                     <Route path="/admin/sellers" element={<AdminSellers />} />
                     <Route path="/admin/orders" element={<AdminOrders />} />
+                    <Route path="/admin/notifications" element={<AdminNotifications />} />
                     <Route path="/admin/profile" element={<AdminProfile />} />
                     <Route path="/admin/manage-admins" element={<AdminManage />} />
                   </Route>

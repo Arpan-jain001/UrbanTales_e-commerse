@@ -1,41 +1,71 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, NavLink } from "react-router-dom";
 import { useSellerAuth } from "../context/SellerAuthContext";
 import logo from "../../assets/UrbanTales.png";
 import {
-  AppBar, Toolbar, Button, Avatar, Chip, Box, Menu, MenuItem, Tooltip, useMediaQuery
+  AppBar,
+  Toolbar,
+  Button,
+  Avatar,
+  Chip,
+  Box,
+  Menu,
+  MenuItem,
+  Tooltip,
+  useMediaQuery,
+  Badge,
 } from "@mui/material";
 import { Logout, AccountCircle, Menu as MenuIcon } from "@mui/icons-material";
-import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
-import SellerNotificationDrawer from "./SellerNotificationDrawer";
+import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import { motion } from "framer-motion";
 
-// Seller panel nav items
+const API = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
+
 const NAV = [
   { label: "Dashboard", href: "/seller/dashboard" },
   { label: "Products", href: "/seller/products" },
   { label: "Add Product", href: "/seller/add-product" },
   { label: "Orders", href: "/seller/orders" },
   { label: "Earnings", href: "/seller/earnings" },
-  { label: "Profile", href: "/seller/profile" }
+  { label: "Profile", href: "/seller/profile" },
 ];
 
 export default function SellerNavbar() {
-  const { seller, logout } = useSellerAuth();
-  const notificationsCount = seller?.notificationsCount ?? 0;
+  const { seller, logout, token } = useSellerAuth();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [notifCount, setNotifCount] = useState(0);
+  const isMobile = useMediaQuery("(max-width:900px)");
+
   const handleMenu = (event) => setAnchorEl(event.currentTarget);
   const handleClose = () => setAnchorEl(null);
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const isMobile = useMediaQuery('(max-width:900px)');
 
-  // Secure logout handler
   const handleSellerLogout = () => {
     logout();
     navigate("/sellerlogin");
   };
+
+  // Fetch seller unread notifications count
+  useEffect(() => {
+    if (!token) return;
+
+    const fetchCount = async () => {
+      try {
+        const res = await fetch(`${API}/api/sellers/notifications/unread-count`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setNotifCount(data.count || 0);
+        }
+      } catch {}
+    };
+
+    fetchCount();
+    const id = setInterval(fetchCount, 30000); // 30s interval
+    return () => clearInterval(id);
+  }, [token]);
 
   return (
     <>
@@ -43,15 +73,17 @@ export default function SellerNavbar() {
         position="sticky"
         elevation={5}
         sx={{
-          background: 'linear-gradient(90deg,#f8f6fc 40%, #e2e2fa 100%)',
-          borderBottom: "1px solid #e2e2fa"
+          background: "linear-gradient(90deg,#f8f6fc 40%, #e2e2fa 100%)",
+          borderBottom: "1px solid #e2e2fa",
         }}
       >
         <Toolbar
           sx={{
-            minHeight: 64, px: { xs: 2, sm: 7 },
-            display: 'flex', alignItems: 'center',
-            backdropFilter: "blur(10px)"
+            minHeight: 64,
+            px: { xs: 2, sm: 7 },
+            display: "flex",
+            alignItems: "center",
+            backdropFilter: "blur(10px)",
           }}
         >
           {/* Logo */}
@@ -66,14 +98,21 @@ export default function SellerNavbar() {
           {/* Hamburger menu (mobile) */}
           {isMobile && (
             <>
-              <Button sx={{ ml: 1, minWidth: 0 }} onClick={() => setMobileNavOpen(v => !v)}>
+              <Button sx={{ ml: 1, minWidth: 0 }} onClick={() => setMobileNavOpen((v) => !v)}>
                 <MenuIcon sx={{ color: "#5c27fe" }} fontSize="large" />
               </Button>
               {mobileNavOpen && (
                 <Box
                   sx={{
-                    position: "absolute", top: 64, left: 0, right: 0, bgcolor: "#fff",
-                    zIndex: 999, boxShadow: 2, borderBottomLeftRadius: 8, borderBottomRightRadius: 8
+                    position: "absolute",
+                    top: 64,
+                    left: 0,
+                    right: 0,
+                    bgcolor: "#fff",
+                    zIndex: 999,
+                    boxShadow: 2,
+                    borderBottomLeftRadius: 8,
+                    borderBottomRightRadius: 8,
                   }}
                 >
                   {NAV.map(({ label, href }) => (
@@ -88,7 +127,7 @@ export default function SellerNavbar() {
                         padding: "14px 18px",
                         textDecoration: "none",
                         transition: "all .2s",
-                        fontSize: 18
+                        fontSize: 18,
                       })}
                       onClick={() => setMobileNavOpen(false)}
                     >
@@ -101,10 +140,14 @@ export default function SellerNavbar() {
           )}
 
           {/* Desktop NAV links */}
-          <Box sx={{
-            flexGrow: 1, display: isMobile ? "none" : "flex",
-            alignItems: "center", gap: 2
-          }}>
+          <Box
+            sx={{
+              flexGrow: 1,
+              display: isMobile ? "none" : "flex",
+              alignItems: "center",
+              gap: 2,
+            }}
+          >
             {NAV.map(({ label, href }) => (
               <NavLink
                 key={label}
@@ -118,7 +161,7 @@ export default function SellerNavbar() {
                   textDecoration: "none",
                   fontSize: 16,
                   transition: "all .22s cubic-bezier(.61,1.42,.48,.89)",
-                  boxShadow: isActive ? "0 0 16px #ffcc0044" : ""
+                  boxShadow: isActive ? "0 0 16px #ffcc0044" : "",
                 })}
               >
                 {label}
@@ -126,54 +169,46 @@ export default function SellerNavbar() {
             ))}
           </Box>
 
-          {/* Bell + Notification Drawer */}
+          {/* Bell + Badge */}
           <Box sx={{ ml: 1, display: "flex", alignItems: "center" }}>
             <motion.div
               whileHover={{ scale: 1.13 }}
               whileTap={{ scale: 0.95 }}
               transition={{ type: "spring", stiffness: 360, damping: 15 }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                background: "#fff",
-                borderRadius: 20,
-                width: 40,
-                height: 28,
-                justifyContent: "center",
-                marginRight: 8,
-                cursor: "pointer",
-                boxShadow: "0 2px 12px #f8e2fa44",
-                border: "none",
-                padding: 0,
-                position: "relative"
-              }}
-              onClick={() => setNotifOpen(true)}
-              tabIndex={0}
-              aria-label="Seller Notifications"
+              style={{ position: "relative", cursor: "pointer" }}
+              onClick={() => navigate("/seller/notifications")}
             >
-              <NotificationsNoneIcon sx={{ color: "#FFD600", fontSize: 23 }} />
-              {notificationsCount > 0 && (
-                <span
-                  style={{
-                    background: "#F43F5E",
-                    color: "#fff",
-                    borderRadius: 999,
-                    position: "absolute",
-                    top: -9,
-                    right: -6,
+              <Badge
+                badgeContent={notifCount}
+                color="error"
+                sx={{
+                  "& .MuiBadge-badge": {
                     fontSize: 11,
                     fontWeight: 700,
-                    padding: "2px 5px"
+                    minWidth: 18,
+                    height: 18,
+                  },
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    background: "#fff",
+                    borderRadius: "50%",
+                    width: 40,
+                    height: 40,
+                    justifyContent: "center",
+                    boxShadow: "0 2px 12px #f8e2fa44",
                   }}
                 >
-                  {notificationsCount}
-                </span>
-              )}
+                  <NotificationsNoneIcon sx={{ color: "#FFD600", fontSize: 23 }} />
+                </Box>
+              </Badge>
             </motion.div>
-          
           </Box>
 
-          {/* Seller Info & Profile Menu */}
+                    {/* Seller Info & Profile Menu */}
           {seller && (
             <>
               <Tooltip title={seller.fullName || seller.email}>
@@ -189,23 +224,28 @@ export default function SellerNavbar() {
                 label={seller.fullName?.split(" ")[0] || seller.email}
                 sx={{ bgcolor: "#FFCC00", color: "#440077", fontWeight: 700, fontSize: 15, ml: 1 }}
               />
-              <Menu
-                anchorEl={anchorEl}
-                open={Boolean(anchorEl)}
-                onClose={handleClose}
-                sx={{ mt: 2 }}
-              >
-                <MenuItem onClick={() => { navigate("/seller/profile"); handleClose(); }}>
+              <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose} sx={{ mt: 2 }}>
+                <MenuItem
+                  onClick={() => {
+                    navigate("/seller/profile");
+                    handleClose();
+                  }}
+                >
                   <AccountCircle sx={{ mr: 1 }} /> Profile
                 </MenuItem>
-                <MenuItem onClick={() => { handleSellerLogout(); handleClose(); }}>
+                <MenuItem
+                  onClick={() => {
+                    handleSellerLogout();
+                    handleClose();
+                  }}
+                >
                   <Logout sx={{ mr: 1 }} /> Logout
                 </MenuItem>
               </Menu>
             </>
           )}
 
-          {/* Logout */}
+          {/* Logout Button (Desktop) */}
           {!Boolean(anchorEl) && (
             <Button
               onClick={handleSellerLogout}
@@ -217,7 +257,7 @@ export default function SellerNavbar() {
                 borderRadius: 2,
                 fontWeight: 700,
                 display: isMobile ? "none" : "flex",
-                '&:hover': { bgcolor: "#FFCC00", color: "#440077" }
+                "&:hover": { bgcolor: "#FFCC00", color: "#440077" },
               }}
             >
               Logout
@@ -228,3 +268,4 @@ export default function SellerNavbar() {
     </>
   );
 }
+

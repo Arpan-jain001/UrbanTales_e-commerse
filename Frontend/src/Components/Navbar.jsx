@@ -10,12 +10,13 @@ import {
   PackageSearch,
   Menu,
   X,
-  ChevronDown,
   ChevronRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import urbanTalesLogo from "../assets/UrbanTales.png";
 
+const BASE_API_URL =
+  import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
 const NAV_ITEMS = [
   { label: "Home", href: "/" },
@@ -54,7 +55,7 @@ function cn(...classes) {
   return classes.filter(Boolean).join(" ");
 }
 
-// ---- ProfileMenu ----
+/* ---------- ProfileMenu ---------- */
 function ProfileMenu({ user, onLogin, onLogout }) {
   const [open, setOpen] = useState(false);
 
@@ -128,7 +129,7 @@ function ProfileMenu({ user, onLogin, onLogout }) {
   );
 }
 
-// ---- DesktopCategory ----
+/* ---------- DesktopCategory ---------- */
 function DesktopCategory({ item }) {
   const hasSubs = Array.isArray(item.links) && item.links.length > 0;
   const baseCat = getCatFromHref(item.href);
@@ -167,7 +168,7 @@ function DesktopCategory({ item }) {
   );
 }
 
-// ---- MobileSidebarCategory ----
+/* ---------- MobileSidebarCategory ---------- */
 function MobileSidebarCategory({ item, onNavigate }) {
   const [expanded, setExpanded] = useState(false);
   const hasSubs = Array.isArray(item.links) && item.links.length > 0;
@@ -226,7 +227,7 @@ function MobileSidebarCategory({ item, onNavigate }) {
   );
 }
 
-// ---- SearchBar ----
+/* ---------- SearchBar ---------- */
 function SearchBar({ onSearch }) {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
@@ -259,7 +260,7 @@ function SearchBar({ onSearch }) {
   );
 }
 
-// ---- Badge ----
+/* ---------- Badge ---------- */
 function Badge({ count }) {
   if (!count || count <= 0) return null;
   const display = count > 99 ? "99+" : String(count);
@@ -270,32 +271,53 @@ function Badge({ count }) {
   );
 }
 
-// ---- Navbar ----
-const Navbar = ({ cartCount, onSearch }) => {
+/* ---------- Navbar ---------- */
+const Navbar = ({ cartCount, onSearch, notificationCount }) => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  const [currentNotificationCount, setCurrentNotificationCount] = useState(0);
+  const [notifQty, setNotifQty] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // user load
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem("user"));
-    const token = localStorage.getItem("token");
-    if (storedUser && token) setUser(storedUser);
+    try {
+      const storedUser = JSON.parse(localStorage.getItem("user"));
+      const token = localStorage.getItem("token");
+      if (storedUser && token) setUser(storedUser);
+    } catch {
+      // ignore
+    }
+  }, []);
 
-    const checkNotifications = () => {
-      const storedCount = Number(localStorage.getItem("notificationCount") || 0);
-      if (storedCount !== currentNotificationCount) {
-        setCurrentNotificationCount(storedCount);
+  // notifications unread count (if parent ne prop nahi diya)
+  useEffect(() => {
+    if (typeof notificationCount === "number") {
+      setNotifQty(notificationCount);
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const fetchCount = async () => {
+      try {
+        const res = await fetch(`${BASE_API_URL}/api/notifications/unread-count`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setNotifQty(data.count || 0);
+      } catch {
+        // ignore
       }
     };
 
-    checkNotifications();
-    const intervalId = setInterval(checkNotifications, 1000);
-    return () => clearInterval(intervalId);
-  }, [currentNotificationCount]);
+    fetchCount();
+    const id = setInterval(fetchCount, 30000);
+    return () => clearInterval(id);
+  }, [notificationCount]);
 
   const cartQty = cartCount || Number(localStorage.getItem("cartCount") || 0);
-  const notifQty = currentNotificationCount;
 
   const handleLogin = () => navigate("/login");
   const handleLogout = () => {
@@ -339,7 +361,11 @@ const Navbar = ({ cartCount, onSearch }) => {
           {/* Icons */}
           <div className="flex items-center gap-2 md:gap-4">
             <div className="hidden md:block">
-              <ProfileMenu user={user} onLogin={handleLogin} onLogout={handleLogout} />
+              <ProfileMenu
+                user={user}
+                onLogin={handleLogin}
+                onLogout={handleLogout}
+              />
             </div>
 
             {/* Cart */}
@@ -461,7 +487,9 @@ const Navbar = ({ cartCount, onSearch }) => {
                     className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition"
                   >
                     <UserCircle2 className="w-5 h-5 text-gray-600" />
-                    <span className="font-medium text-gray-700">My Profile</span>
+                    <span className="font-medium text-gray-700">
+                      My Profile
+                    </span>
                   </Link>
                   <Link
                     to="/trackorder"
@@ -469,7 +497,9 @@ const Navbar = ({ cartCount, onSearch }) => {
                     className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition"
                   >
                     <PackageSearch className="w-5 h-5 text-gray-600" />
-                    <span className="font-medium text-gray-700">My Orders</span>
+                    <span className="font-medium text-gray-700">
+                      My Orders
+                    </span>
                   </Link>
                   <Link
                     to="/cartpage"
@@ -490,7 +520,9 @@ const Navbar = ({ cartCount, onSearch }) => {
                     className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition"
                   >
                     <Bell className="w-5 h-5 text-gray-600" />
-                    <span className="font-medium text-gray-700">Notifications</span>
+                    <span className="font-medium text-gray-700">
+                      Notifications
+                    </span>
                     {notifQty > 0 && (
                       <span className="ml-auto bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">
                         {notifQty}
@@ -544,4 +576,3 @@ const Navbar = ({ cartCount, onSearch }) => {
 };
 
 export default Navbar;
-

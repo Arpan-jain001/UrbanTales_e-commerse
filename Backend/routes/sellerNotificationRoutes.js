@@ -1,10 +1,129 @@
-    import express from "express";
-    import { list, readAll } from "../controllers/sellerNotificationController.js";
-    import sellerAuth from "../middlewares/sellerAuth.js";
+// routes/sellerNotificationRoutes.js
+import express from "express";
+import sellerAuth from "../middlewares/sellerAuth.js";
+import Notification from "../models/Notification.js";
 
-    const router = express.Router();
+const router = express.Router();
 
-    router.get('/notifications', sellerAuth, list);
-    router.put('/notifications/read-all', sellerAuth, readAll);
+// POST broadcast
+router.post("/broadcast", sellerAuth, async (req, res) => {
+  try {
+    const { title, message, link, category, objective } = req.body;
 
-    export default router;
+    if (!message || !title) {
+      return res.status(400).json({ message: "Title and message are required" });
+    }
+
+    const notif = await Notification.create({
+      userId: null,
+      targetAudience: "USERS",
+      senderType: "SELLER",
+      senderId: req.seller._id,
+      senderModel: "Seller",
+      senderName: req.seller.shopName || req.seller.fullName || "Seller",
+      title,
+      message,
+      link: link || null,
+      category: category || "GENERAL",
+      objective: objective || "general",
+    });
+
+    res.status(201).json({ message: "Notification broadcasted", notification: notif });
+  } catch (err) {
+    console.error("Seller broadcast error:", err);
+    res.status(500).json({ message: "Failed to send notification" });
+  }
+});
+
+// GET seller notifications (exclude soft deleted)
+router.get("/", sellerAuth, async (req, res) => {
+  try {
+    const sellerId = req.seller._id;
+
+    const notifications = await Notification.find({
+      $or: [
+        { sellerId },
+        { sellerId: null, targetAudience: "SELLERS" },
+        { sellerId: null, targetAudience: "BOTH" },
+      ],
+      deletedBy: { $ne: sellerId } // ← Hide if seller deleted
+    })
+      .sort({ createdAt: -1 })
+      .limit(100);
+
+    res.json(notifications);
+  } catch (err) {
+    console.error("Get seller notifications error:", err);
+    res.status(500).json({ message: "Failed to fetch notifications" });
+  }
+});
+
+// POST mark as read
+router.post("/mark-read", sellerAuth, async (req, res) => {
+  try {
+    const sellerId = req.seller._id;
+    const { ids = [] } = req.body;
+
+    await Notification.updateMany(
+      {
+        _id: { $in: ids },
+        $or: [{ sellerId }, { sellerId: null }],
+      },
+      { $set: { isRead: true } }
+    );
+
+    res.json({ message: "Updated" });
+  } catch (err) {
+    console.error("Mark read error:", err);
+    res.status(500).json({ message: "Failed to update notifications" });
+  }
+});
+
+// GET unread count
+router.get("/unread-count", sellerAuth, async (req, res) => {
+  try {
+    const sellerId = req.seller._id;
+
+    const count = await Notification.countDocuments({
+      $or: [
+        { sellerId },
+        { sellerId: null, targetAudience: "SELLERS" },
+        { sellerId: null, targetAudience: "BOTH" },
+      ],
+      isRead: false,
+      deletedBy: { $ne: sellerId }
+    });
+
+    res.json({ count });
+  } catch (err) {
+    console.error("Unread count error:", err);
+    res.status(500).json({ message: "Failed to fetch count" });
+  }
+});
+
+// DELETE (soft delete for seller)
+router.delete("/:id", sellerAuth, async (req, res) => {
+  try {
+    const sellerId = req.seller._id;
+    const { id } = req.params;
+
+    const notif = await Notification.findById(id);
+
+    if (!notif) {
+      return res.status(404).json({ message: "Notification not found" });
+    }
+
+    // Soft delete - add seller to deletedBy
+    await Notification.findByIdAndUpdate(
+      id,
+      { $addToSet: { deletedBy: sellerId } }
+    );
+
+    res.json({ message: "Notification hidden" });
+  } catch (err) {
+    console.error("Delete notification error:", err);
+    res.status(500).json({ message: "Failed to delete notification" });
+  }
+});
+
+export default router;
