@@ -2,7 +2,7 @@ import React, { useEffect } from "react"; // ✅
 import './index.css'; // ✅
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom"; // ✅
 import 'leaflet/dist/leaflet.css'; // ✅
-
+import AdminPromotions from './admin/pages/AdminPromotions';
 // ==== CONTEXT PROVIDERS ====
 import ShopProvider from './context/ShopContext.jsx'; // Buyer/User context // ✅
 import { SellerAuthProvider } from "./seller/context/SellerAuthContext.jsx"; // ✅
@@ -58,6 +58,7 @@ import UnderConstruction from './Pages/UnderConstruction'; // ✅
 import SellerNotifications from "./seller/pages/SellerNotifications";
 
 // ==== ALL ADMIN PAGES ====
+
 import { AdminAuthProvider } from "./admin/context/AdminAuthContext.jsx"; // ✅ MISSING
 import AdminProtectedRoute from "./admin/routes/AdminProtectedRoute.jsx"; // ✅ MISSING
 import AdminLayout from "./admin/layout/AdminLayout.jsx"; // ✅ MISSING
@@ -141,6 +142,7 @@ function App() {
                 <Route path="/seller/notifications" element={<SellerNotifications />} />
                 
                 {/* ADMIN PUBLIC */}
+                <Route path="/admin/promotions" element={<AdminPromotions />} />
                 <Route path="/admin/login" element={<AdminLogin />} />
                 <Route path="/admin/forgot-password" element={<AdminForgotPassword />} />
                 <Route path="/admin/verify-otp" element={<AdminVerifyOtp />} />

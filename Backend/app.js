@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import connectDB from './models/db.js';
 import fileUpload from 'express-fileupload'; // ✅ must be near top
-
+import promotionRoutes from './routes/promotionRoutes.js';
 // ✅ Route Imports
 import userRoutes from './routes/user.routs.js';
 import productRoutes from './routes/product.routes.js';
@@ -73,6 +73,7 @@ app.use("/api/admin/sellers", adminSellersRoutes);
 app.use("/api/admin/users", adminUsersRoutes);
 app.use("/api/admin/orders", adminOrdersRoutes);
 app.use("/api/admin/notifications", adminNotificationsRoutes);
+app.use('/api/promotions', promotionRoutes);
 
 // ✅ Test route
 app.get('/', (req, res) => {

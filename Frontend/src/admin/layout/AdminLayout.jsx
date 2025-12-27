@@ -15,7 +15,8 @@ import {
   Shield,
   LogOut,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Video
 } from "lucide-react";
 
 const BASE_API_URL =
@@ -27,6 +28,7 @@ const navItems = [
   { path: "/admin/users", label: "Users", icon: Users },
   { path: "/admin/sellers", label: "Sellers", icon: Store },
   { path: "/admin/orders", label: "Orders", icon: ShoppingCart },
+  { path: "/admin/promotions", label: "Promotions", icon: Video },
   { path: "/admin/notifications", label: "Notifications", icon: Bell },
   { path: "/admin/profile", label: "Profile", icon: UserCircle },
 ];

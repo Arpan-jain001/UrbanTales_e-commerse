@@ -1,463 +1,547 @@
-import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import axios from 'axios';
-import { FiX, FiArrowRight } from 'react-icons/fi';
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+import { motion, AnimatePresence } from "framer-motion";
+import { useAdminAuth } from "../context/AdminAuthContext";
+import {
+  FiVideo,
+  FiX,
+  FiEdit2,
+  FiTrash2,
+  FiEye,
+  FiEyeOff,
+  FiPlus,
+  FiActivity,
+  FiMonitor,
+  FiImage,
+} from "react-icons/fi";
 
-const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:3000';
+const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
-export default function PromotionSplash() {
-  const [promotion, setPromotion] = useState(null);
-  const [show, setShow] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(0);
+const typeIcons = {
+  VIDEO: FiVideo,
+  BANNER: FiImage,
+  ANIMATION: FiActivity,
+  "3D": FiMonitor,
+};
+
+export default function AdminPromotions() {
+  const { token } = useAdminAuth();
+  const [promotions, setPromotions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingPromo, setEditingPromo] = useState(null);
+  
+  const [form, setForm] = useState({
+    title: "",
+    description: "",
+    type: "ANIMATION",
+    mediaUrl: "",
+    duration: 8,
+    placement: "HOMEPAGE_FULLSCREEN",
+    isActive: true,
+    priority: 0,
+    clickAction: "",
+    targetAudience: "ALL",
+    theme: "NEWYEAR",
+    startDate: "",
+    endDate: "",
+  });
 
   useEffect(() => {
-    fetchPromotion();
-  }, []);
+    if (!token) return;
+    fetchPromotions();
+    // eslint-disable-next-line
+  }, [token]);
 
-  useEffect(() => {
-    if (!show || timeLeft <= 0) return;
-    
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 0.1) {
-          setShow(false);
-          sessionStorage.setItem('promotionSeen', 'true');
-          return 0;
-        }
-        return prev - 0.1;
-      });
-    }, 100);
-
-    return () => clearInterval(timer);
-  }, [show, timeLeft]);
-
-  const fetchPromotion = async () => {
+  const fetchPromotions = async () => {
     try {
-      const lastSeen = sessionStorage.getItem('promotionSeen');
-      if (lastSeen) return;
-
-      const res = await axios.get(`${BASE_API_URL}/api/promotions/active?placement=HOMEPAGE_FULLSCREEN`);
-      
-      if (res.data.promotions && res.data.promotions.length > 0) {
-        const promo = res.data.promotions[0];
-        setPromotion(promo);
-        setShow(true);
-        setTimeLeft(promo.duration || 6);
-
-        // Track view
-        axios.post(`${BASE_API_URL}/api/promotions/${promo._id}/view`).catch(console.error);
-      }
+      setLoading(true);
+      const res = await axios.get(`${BASE_API_URL}/api/promotions/admin/list`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setPromotions(res.data.promotions || []);
     } catch (error) {
-      console.error('Fetch promotion error:', error);
+      console.error('Fetch promotions error:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleClose = () => {
-    setShow(false);
-    sessionStorage.setItem('promotionSeen', 'true');
-  };
-
-  const handleClick = () => {
-    if (promotion?.clickAction) {
-      axios.post(`${BASE_API_URL}/api/promotions/${promotion._id}/click`).catch(console.error);
-      window.location.href = promotion.clickAction;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      if (editingPromo) {
+        await axios.put(
+          `${BASE_API_URL}/api/promotions/admin/${editingPromo._id}`,
+          form,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      } else {
+        await axios.post(
+          `${BASE_API_URL}/api/promotions/admin/create`,
+          form,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      }
+      
+      fetchPromotions();
+      closeModal();
+    } catch (error) {
+      console.error('Save promotion error:', error);
+      alert(error.response?.data?.message || 'Failed to save promotion');
     }
   };
 
-  if (!promotion) return null;
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this promotion permanently?')) return;
+    
+    try {
+      await axios.delete(`${BASE_API_URL}/api/promotions/admin/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchPromotions();
+    } catch (error) {
+      console.error('Delete promotion error:', error);
+    }
+  };
 
-  const progress = (timeLeft / (promotion.duration || 6)) * 100;
+  const toggleStatus = async (id) => {
+    try {
+      await axios.patch(
+        `${BASE_API_URL}/api/promotions/admin/${id}/toggle`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      fetchPromotions();
+    } catch (error) {
+      console.error('Toggle status error:', error);
+    }
+  };
+
+  const openEditModal = (promo) => {
+    setEditingPromo(promo);
+    setForm({
+      title: promo.title || "",
+      description: promo.description || "",
+      type: promo.type || "ANIMATION",
+      mediaUrl: promo.mediaUrl || "",
+      duration: promo.duration || 8,
+      placement: promo.placement || "HOMEPAGE_FULLSCREEN",
+      isActive: promo.isActive ?? true,
+      priority: promo.priority || 0,
+      clickAction: promo.clickAction || "",
+            targetAudience: promo.targetAudience || "ALL",
+      theme: promo.theme || "GENERIC",
+      startDate: promo.startDate ? new Date(promo.startDate).toISOString().slice(0, 16) : "",
+      endDate: promo.endDate ? new Date(promo.endDate).toISOString().slice(0, 16) : "",
+    });
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingPromo(null);
+    setForm({
+      title: "",
+      description: "",
+      type: "ANIMATION",
+      mediaUrl: "",
+      duration: 8,
+      placement: "HOMEPAGE_FULLSCREEN",
+      isActive: true,
+      priority: 0,
+      clickAction: "",
+      targetAudience: "ALL",
+      theme: "NEWYEAR",
+      startDate: "",
+      endDate: "",
+    });
+  };
 
   return (
-    <AnimatePresence>
-      {show && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.5 }}
-          className="fixed inset-0 z-[9999] overflow-hidden"
-        >
-          {/* Animated Background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-purple-950 to-pink-950">
-            {/* Floating Orbs */}
-            <motion.div
-              animate={{
-                scale: [1, 1.2, 1],
-                x: [0, 100, 0],
-                y: [0, -50, 0],
-              }}
-              transition={{
-                duration: 8,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-              className="absolute top-10 left-10 w-72 h-72 rounded-full bg-gradient-to-r from-pink-500/30 to-purple-500/30 blur-3xl"
-            />
-            <motion.div
-              animate={{
-                scale: [1, 1.3, 1],
-                x: [0, -80, 0],
-                y: [0, 60, 0],
-              }}
-              transition={{
-                duration: 10,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-              className="absolute bottom-20 right-20 w-96 h-96 rounded-full bg-gradient-to-r from-indigo-500/30 to-blue-500/30 blur-3xl"
-            />
-            <motion.div
-              animate={{
-                scale: [1, 1.1, 1],
-                x: [0, 50, 0],
-                y: [0, -30, 0],
-              }}
-              transition={{
-                duration: 12,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-              className="absolute top-1/2 left-1/2 w-80 h-80 rounded-full bg-gradient-to-r from-yellow-500/20 to-orange-500/20 blur-3xl"
-            />
-
-            {/* Animated Grid */}
-            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:50px_50px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]" />
+    <div className="space-y-4 w-full">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center shadow-lg flex-shrink-0">
+            <FiVideo className="w-6 h-6 text-white" />
           </div>
+          <div>
+            <h2 className="text-xl font-semibold text-slate-100">Promotions & Banners</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Manage promotional content</p>
+          </div>
+        </div>
+        
+        <button
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white px-4 py-2.5 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all"
+        >
+          <FiPlus size={18} />
+          Create Promotion
+        </button>
+      </div>
 
-          {/* Close Button */}
-          <motion.button
-            initial={{ opacity: 0, scale: 0, rotate: -180 }}
-            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            transition={{ delay: 0.8, type: "spring", stiffness: 200 }}
-            onClick={handleClose}
-            className="absolute top-4 right-4 sm:top-8 sm:right-8 z-50 w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 flex items-center justify-center transition-all group"
-          >
-            <FiX className="w-6 h-6 sm:w-7 sm:h-7 text-white group-hover:rotate-90 transition-transform duration-300" />
-          </motion.button>
-
-          {/* Main Content Container */}
-          <div className="relative h-full flex items-center justify-center p-4 sm:p-6 md:p-8">
-            <motion.div
-              initial={{ scale: 0.5, opacity: 0, rotateY: -90 }}
-              animate={{ scale: 1, opacity: 1, rotateY: 0 }}
-              exit={{ scale: 0.5, opacity: 0, rotateY: 90 }}
-              transition={{ 
-                duration: 0.8,
-                type: "spring",
-                stiffness: 100
-              }}
-              className="relative max-w-7xl w-full"
-              style={{ perspective: "2000px" }}
-            >
-              {/* 3D Card Effect */}
-              <motion.div
-                animate={{
-                  rotateX: [0, 2, 0, -2, 0],
-                  rotateY: [0, -2, 0, 2, 0],
-                }}
-                transition={{
-                  duration: 10,
-                  repeat: Infinity,
-                  ease: "easeInOut"
-                }}
-                className="relative rounded-3xl overflow-hidden shadow-2xl"
-                style={{ transformStyle: "preserve-3d" }}
-                onClick={handleClick}
-              >
-                {/* Glassmorphism Border */}
-                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/20 via-white/10 to-transparent p-[2px]">
-                  <div className="w-full h-full rounded-3xl bg-black/40 backdrop-blur-2xl" />
-                </div>
-
-                {/* Content */}
-                <div className="relative cursor-pointer">
-                  {/* Media */}
-                  {promotion.type === "VIDEO" ? (
-                    <video
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                      className="w-full h-auto max-h-[85vh] object-contain rounded-3xl"
-                    >
-                      <source src={promotion.mediaUrl} type="video/mp4" />
-                    </video>
-                  ) : (
-                    <motion.img
-                      src={promotion.mediaUrl}
-                      alt={promotion.title}
-                      className="w-full h-auto max-h-[85vh] object-contain rounded-3xl"
-                      animate={{
-                        scale: [1, 1.05, 1],
-                      }}
-                      transition={{
-                        duration: 4,
-                        repeat: Infinity,
-                        ease: "easeInOut"
-                      }}
-                    />
-                  )}
-
-                  {/* Overlay Content */}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 sm:p-8 md:p-12">
-                    {/* Title with 3D Text Effect */}
-                    <motion.div
-                      initial={{ y: 100, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.5, duration: 0.6 }}
-                      className="relative"
-                    >
-                      <h1 
-                        className="text-4xl sm:text-6xl md:text-8xl font-black mb-4 sm:mb-6"
-                        style={{
-                          background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 25%, #FF1493 50%, #9370DB 75%, #4169E1 100%)',
-                          WebkitBackgroundClip: 'text',
-                          WebkitTextFillColor: 'transparent',
-                          backgroundClip: 'text',
-                          textShadow: '0 0 80px rgba(255,215,0,0.5)',
-                          filter: 'drop-shadow(0 10px 30px rgba(255,105,180,0.6))'
-                        }}
+      {/* Promotions Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <AnimatePresence>
+          {loading ? (
+            <div className="col-span-full flex justify-center py-16">
+              <div className="w-10 h-10 border-2 border-pink-500/30 border-t-pink-500 rounded-full animate-spin" />
+            </div>
+          ) : promotions.length === 0 ? (
+            <div className="col-span-full bg-slate-900/60 border border-slate-800 rounded-xl p-12 text-center backdrop-blur-xl">
+              <FiVideo size={48} className="text-slate-600 mx-auto mb-3" />
+              <p className="text-slate-400 font-medium">No promotions yet</p>
+              <p className="text-xs text-slate-500 mt-1">Create your first promotion</p>
+            </div>
+          ) : (
+            promotions.map((promo, idx) => {
+              const Icon = typeIcons[promo.type] || FiImage;
+              const isExpired = promo.endDate && new Date(promo.endDate) < new Date();
+              
+              return (
+                <motion.div
+                  key={promo._id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ delay: idx * 0.1 }}
+                  className="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden backdrop-blur-xl shadow-lg hover:shadow-2xl hover:border-slate-700 transition-all"
+                >
+                  {/* Preview/Thumbnail */}
+                  <div className="relative h-40 bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center overflow-hidden">
+                    <Icon className="w-16 h-16 text-slate-600" />
+                    
+                    {/* Status Badge */}
+                    <div className="absolute top-3 right-3">
+                      <span
+                        className={`px-3 py-1 rounded-lg text-xs font-bold border backdrop-blur-md ${
+                          isExpired
+                            ? "bg-slate-500/20 text-slate-400 border-slate-500/50"
+                            : promo.isActive
+                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                            : "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                        }`}
                       >
-                        {promotion.title}
-                      </h1>
-                      
-                      {/* Sparkle Effects */}
-                      {[...Array(8)].map((_, i) => (
-                        <motion.div
-                          key={i}
-                          animate={{
-                            scale: [0, 1, 0],
-                            opacity: [0, 1, 0],
-                          }}
-                          transition={{
-                            duration: 2,
-                            repeat: Infinity,
-                            delay: i * 0.3,
-                          }}
-                          className="absolute w-4 h-4 rounded-full bg-yellow-300"
-                          style={{
-                            top: `${Math.random() * 100}%`,
-                            left: `${Math.random() * 100}%`,
-                          }}
-                        />
-                      ))}
-                    </motion.div>
+                        {isExpired ? "Expired" : promo.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </div>
 
-                    {/* Description */}
-                    {promotion.description && (
-                      <motion.p
-                        initial={{ y: 50, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.7, duration: 0.6 }}
-                        className="text-xl sm:text-2xl md:text-4xl font-bold text-white drop-shadow-2xl mb-6 sm:mb-8 max-w-4xl"
-                      >
-                        {promotion.description}
-                      </motion.p>
-                    )}
+                    {/* Type Badge */}
+                    <div className="absolute top-3 left-3">
+                      <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-pink-500/20 text-pink-300 border border-pink-500/50 backdrop-blur-md">
+                        <Icon size={14} />
+                        {promo.type}
+                      </div>
+                    </div>
 
-                    {/* CTA Button */}
-                    {promotion.clickAction && (
-                      <motion.button
-                        initial={{ y: 50, opacity: 0, scale: 0.8 }}
-                        animate={{ y: 0, opacity: 1, scale: 1 }}
-                        transition={{ delay: 1, duration: 0.6 }}
-                        whileHover={{ scale: 1.1, rotate: 2 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={handleClick}
-                        className="group relative px-8 sm:px-12 py-4 sm:py-6 bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 rounded-full text-white font-black text-lg sm:text-2xl shadow-2xl overflow-hidden"
-                      >
-                        <motion.div
-                          animate={{
-                            x: ['-100%', '100%'],
-                          }}
-                          transition={{
-                            duration: 1.5,
-                            repeat: Infinity,
-                            ease: "linear"
-                          }}
-                          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-12"
-                        />
-                        <span className="relative flex items-center gap-3">
-                          Shop Now
-                          <FiArrowRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" />
+                    {/* Theme Badge */}
+                    {promo.theme && promo.theme !== "GENERIC" && (
+                      <div className="absolute bottom-3 left-3">
+                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/50 backdrop-blur-md">
+                          {promo.theme}
                         </span>
-                      </motion.button>
+                      </div>
                     )}
                   </div>
 
-                  {/* Floating Particles */}
-                  {[...Array(20)].map((_, i) => (
-                    <motion.div
-                      key={i}
-                      animate={{
-                        y: [0, -100, 0],
-                        x: [0, Math.random() * 50 - 25, 0],
-                        opacity: [0, 1, 0],
-                      }}
-                      transition={{
-                        duration: 3 + Math.random() * 2,
-                        repeat: Infinity,
-                        delay: Math.random() * 2,
-                      }}
-                      className="absolute w-2 h-2 rounded-full bg-white/60"
-                      style={{
-                        bottom: `${Math.random() * 20}%`,
-                        left: `${Math.random() * 100}%`,
-                      }}
-                    />
-                  ))}
+                  {/* Content */}
+                  <div className="p-4">
+                    <h3 className="text-lg font-bold text-slate-100 mb-1 line-clamp-1">
+                      {promo.title}
+                    </h3>
+                    <p className="text-xs text-slate-400 line-clamp-2 mb-3">
+                      {promo.description || "No description"}
+                    </p>
+
+                    {/* Details */}
+                    <div className="space-y-1.5 mb-3 text-xs text-slate-500">
+                      <div className="flex justify-between">
+                        <span>Duration:</span>
+                        <span className="text-slate-300 font-semibold">{promo.duration}s</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Priority:</span>
+                        <span className="text-slate-300 font-semibold">{promo.priority}</span>
+                      </div>
+                      {promo.startDate && (
+                        <div className="flex justify-between">
+                          <span>Start:</span>
+                          <span className="text-slate-300">{new Date(promo.startDate).toLocaleDateString('en-IN')}</span>
+                        </div>
+                      )}
+                      {promo.endDate && (
+                        <div className="flex justify-between">
+                          <span>End:</span>
+                          <span className={isExpired ? "text-rose-400" : "text-slate-300"}>
+                            {new Date(promo.endDate).toLocaleDateString('en-IN')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Stats */}
+                    <div className="flex items-center gap-4 mb-3 text-xs text-slate-500 pb-3 border-b border-slate-800">
+                      <div className="flex items-center gap-1">
+                        <FiEye size={12} />
+                        <span className="text-slate-400">{promo.viewCount || 0}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <FiActivity size={12} />
+                        <span className="text-slate-400">{promo.clickCount || 0}</span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        onClick={() => toggleStatus(promo._id)}
+                        disabled={isExpired}
+                        className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition ${
+                          promo.isActive
+                            ? "bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700"
+                            : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30"
+                        } ${isExpired ? "opacity-50 cursor-not-allowed" : ""}`}
+                      >
+                        {promo.isActive ? <FiEyeOff size={14} /> : <FiEye size={14} />}
+                        {promo.isActive ? "Hide" : "Show"}
+                      </button>
+                      
+                      <button
+                        onClick={() => openEditModal(promo)}
+                        className="flex items-center justify-center p-2 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition"
+                      >
+                        <FiEdit2 size={16} />
+                      </button>
+                      
+                      <button
+                        onClick={() => handleDelete(promo._id)}
+                        className="flex items-center justify-center p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30 transition"
+                      >
+                        <FiTrash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Create/Edit Modal */}
+      <AnimatePresence>
+        {showModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={closeModal}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-slate-950 border border-slate-800 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-slate-100">
+                  {editingPromo ? "Edit Promotion" : "Create Promotion"}
+                </h3>
+                <button onClick={closeModal} className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition">
+                  <FiX className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Title */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-2">
+                    Title *
+                  </label>
+                  <input
+                    type="text"
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    placeholder="e.g., 🎊 Happy New Year 2026!"
+                    required
+                    className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                  />
                 </div>
-              </motion.div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-2">
+                    Description
+                  </label>
+                  <textarea
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    placeholder="Brief description..."
+                    rows={3}
+                    className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50 resize-none"
+                  />
+                </div>
+
+                {/* Type, Duration, Priority */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">Type *</label>
+                    <select
+                      value={form.type}
+                      onChange={(e) => setForm({ ...form, type: e.target.value })}
+                      className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                    >
+                      <option value="ANIMATION">Animation</option>
+                      <option value="VIDEO">Video</option>
+                      <option value="BANNER">Banner</option>
+                      <option value="3D">3D Model</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">Duration (s) *</label>
+                    <input
+                      type="number"
+                      value={form.duration}
+                      onChange={(e) => setForm({ ...form, duration: Number(e.target.value) })}
+                      min="1"
+                      max="60"
+                      required
+                      className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">Priority</label>
+                    <input
+                      type="number"
+                      value={form.priority}
+                      onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}
+                                            min="0"
+                      max="100"
+                      className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                    />
+                  </div>
+                </div>
+
+                {/* Placement, Theme */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">Placement *</label>
+                    <select
+                      value={form.placement}
+                      onChange={(e) => setForm({ ...form, placement: e.target.value })}
+                      className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                    >
+                      <option value="HOMEPAGE_FULLSCREEN">Homepage Fullscreen</option>
+                      <option value="NAVBAR">Navbar Banner</option>
+                      <option value="SIDEBAR">Sidebar</option>
+                      <option value="MODAL">Modal Popup</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">Theme</label>
+                    <select
+                      value={form.theme}
+                      onChange={(e) => setForm({ ...form, theme: e.target.value })}
+                      className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                    >
+                      <option value="NEWYEAR">New Year</option>
+                      <option value="DIWALI">Diwali</option>
+                      <option value="CHRISTMAS">Christmas</option>
+                      <option value="SALE">Sale</option>
+                      <option value="GENERIC">Generic</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Target Audience */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-2">Target Audience</label>
+                  <select
+                    value={form.targetAudience}
+                    onChange={(e) => setForm({ ...form, targetAudience: e.target.value })}
+                    className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                  >
+                    <option value="ALL">All Users</option>
+                    <option value="NEW_USERS">New Users Only</option>
+                    <option value="RETURNING_USERS">Returning Users</option>
+                  </select>
+                </div>
+
+                {/* Click Action URL */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-2">
+                    Click Action (Redirect URL)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.clickAction}
+                    onChange={(e) => setForm({ ...form, clickAction: e.target.value })}
+                    placeholder="/category?cat=newyear or https://..."
+                    className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                  />
+                </div>
+
+                {/* Schedule - Start & End Date */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">Start Date</label>
+                    <input
+                      type="datetime-local"
+                      value={form.startDate}
+                      onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                      className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">End Date</label>
+                    <input
+                      type="datetime-local"
+                      value={form.endDate}
+                      onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                      className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/50"
+                    />
+                  </div>
+                </div>
+
+                {/* Active Toggle */}
+                <div className="flex items-center gap-3 pt-2">
+                  <input
+                    type="checkbox"
+                    id="isActive"
+                    checked={form.isActive}
+                    onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                    className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-pink-600 focus:ring-pink-500/50"
+                  />
+                  <label htmlFor="isActive" className="text-sm text-slate-300 font-medium cursor-pointer">
+                    Set as Active immediately
+                  </label>
+                </div>
+
+                {/* Submit Buttons */}
+                <div className="flex gap-3 pt-4 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-slate-800 text-slate-200 font-semibold border border-slate-700 hover:bg-slate-700 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-gradient-to-r from-pink-600 to-purple-600 text-white font-bold shadow-lg hover:shadow-xl transition-all"
+                  >
+                    {editingPromo ? "Update Promotion" : "Create Promotion"}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
-
-          {/* Progress Bar */}
-          <div className="absolute bottom-0 left-0 right-0 h-2 bg-black/30 backdrop-blur-sm">
-            <motion.div
-              initial={{ scaleX: 1 }}
-              animate={{ scaleX: progress / 100 }}
-              className="h-full bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 origin-left"
-              style={{ transformOrigin: "left" }}
-            />
-          </div>
-
-          {/* Timer Display */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1 }}
-            className="absolute bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full"
-          >
-            <p className="text-white font-bold text-sm sm:text-base flex items-center gap-2">
-              <motion.span
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ duration: 1, repeat: Infinity }}
-              >
-                ⏱️
-              </motion.span>
-              Auto-closing in {Math.ceil(timeLeft)}s
-            </p>
-          </motion.div>
-
-                    {/* Corner Decorations */}
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-            className="absolute top-8 left-8 w-20 h-20 sm:w-32 sm:h-32 opacity-20"
-          >
-            <div className="w-full h-full border-4 border-yellow-400 rounded-full" />
-            <div className="absolute inset-2 border-4 border-pink-400 rounded-full" />
-            <div className="absolute inset-4 border-4 border-purple-400 rounded-full" />
-          </motion.div>
-
-          <motion.div
-            animate={{ rotate: -360 }}
-            transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-            className="absolute bottom-8 right-8 w-20 h-20 sm:w-32 sm:h-32 opacity-20"
-          >
-            <div className="w-full h-full border-4 border-indigo-400 rounded-full" />
-            <div className="absolute inset-2 border-4 border-blue-400 rounded-full" />
-            <div className="absolute inset-4 border-4 border-cyan-400 rounded-full" />
-          </motion.div>
-
-          {/* Shooting Stars */}
-          {[...Array(5)].map((_, i) => (
-            <motion.div
-              key={i}
-              animate={{
-                x: ['0vw', '100vw'],
-                y: ['0vh', '50vh'],
-                opacity: [0, 1, 0],
-              }}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-                delay: i * 1.5,
-                ease: "easeInOut"
-              }}
-              className="absolute top-0 left-0 w-1 h-1 sm:w-2 sm:h-2 bg-white rounded-full"
-              style={{
-                boxShadow: '0 0 20px 2px rgba(255,255,255,0.8), 0 0 40px 4px rgba(255,255,255,0.4)',
-              }}
-            />
-          ))}
-
-          {/* 3D Rotating Elements */}
-          <motion.div
-            animate={{
-              rotateY: [0, 360],
-            }}
-            transition={{
-              duration: 8,
-              repeat: Infinity,
-              ease: "linear"
-            }}
-            className="absolute top-1/4 left-10 hidden md:block"
-            style={{ transformStyle: "preserve-3d" }}
-          >
-            <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl opacity-40 blur-sm" />
-          </motion.div>
-
-          <motion.div
-            animate={{
-              rotateX: [0, 360],
-            }}
-            transition={{
-              duration: 10,
-              repeat: Infinity,
-              ease: "linear"
-            }}
-            className="absolute bottom-1/4 right-10 hidden md:block"
-            style={{ transformStyle: "preserve-3d" }}
-          >
-            <div className="w-32 h-32 bg-gradient-to-br from-pink-400 to-purple-500 rounded-full opacity-40 blur-sm" />
-          </motion.div>
-
-          {/* Pulsating Rings */}
-          {[...Array(3)].map((_, i) => (
-            <motion.div
-              key={i}
-              animate={{
-                scale: [1, 2, 1],
-                opacity: [0.5, 0, 0.5],
-              }}
-              transition={{
-                duration: 3,
-                repeat: Infinity,
-                delay: i * 1,
-              }}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 sm:w-64 sm:h-64 md:w-96 md:h-96 border-2 border-white/30 rounded-full"
-            />
-          ))}
-
-          {/* Bottom Info Bar */}
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 1.2 }}
-            className="absolute bottom-20 sm:bottom-24 left-0 right-0 flex justify-center px-4"
-          >
-            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-2xl px-6 sm:px-8 py-3 sm:py-4">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-white text-xs sm:text-sm font-semibold">Limited Time</span>
-              </div>
-              <div className="hidden sm:block w-px h-6 bg-white/20" />
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">🎁</span>
-                <span className="text-white text-xs sm:text-sm font-semibold">Exclusive Deals</span>
-              </div>
-              <div className="hidden sm:block w-px h-6 bg-white/20" />
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">🔥</span>
-                <span className="text-white text-xs sm:text-sm font-semibold">Hot Offers</span>
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
+
 
