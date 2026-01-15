@@ -19,7 +19,7 @@ export const sendResetPasswordOTP = async (email, otp) => {
   await sgMail.send({
     to: email,
     from: {
-      email: 'urbantales4@gmail.com', // Yahi sender SendGrid par verify hona chahiye!
+      email: 'urbantales.team@gmail.com', // Yahi sender SendGrid par verify hona chahiye!
       name: 'UrbanTales'
     },
     subject: 'UrbanTales Reset Password OTP',
