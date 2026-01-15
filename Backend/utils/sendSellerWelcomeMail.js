@@ -11,7 +11,7 @@ export const sendSellerWelcomeMail = async (email, sellerName) => {
   const msg = {
     to: email,
     from: {
-      email: "urbantales4@gmail.com",
+      email: "urbantales.team@gmail.com",
       name: "UrbanTales Seller Team",
     },
     subject: `Welcome to UrbanTales Seller Platform, ${sellerName}!`,
