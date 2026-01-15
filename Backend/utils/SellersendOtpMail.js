@@ -17,7 +17,7 @@ export async function sendSellerOtpMail({ to, otp }) {
   await sgMail.send({
     to,
     from: {
-      email: "urbantales4@gmail.com", // SendGrid par verified sender email (custom/no-reply bhi ho sakta hai)
+      email: "urbantales.team@gmail.com", // SendGrid par verified sender email (custom/no-reply bhi ho sakta hai)
       name: "UrbanTales Seller"
     },
     subject: "UrbanTales Seller Password Reset OTP",
