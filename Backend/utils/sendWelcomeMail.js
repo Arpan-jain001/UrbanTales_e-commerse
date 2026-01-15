@@ -54,7 +54,7 @@ export const sendWelcomeMail = async (email, fullName) => {
   await sgMail.send({
     to: email,
     from: {
-      email: "urbantales4@gmail.com", // must be verified on SendGrid
+      email: "urbantales.team@gmail.com", // must be verified on SendGrid
       name: "UrbanTales",
     },
     subject: "🎉 Welcome to UrbanTales!",
