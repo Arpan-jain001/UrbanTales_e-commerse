@@ -11,7 +11,7 @@ if (!process.env.SENDGRID_API_KEY) {
 }
 
 // Email sender configuration
-const FROM_EMAIL = "urbantales4@gmail.com";
+const FROM_EMAIL = "urbantales.team@gmail.com";
 const FROM_NAME = "Urbantales-admin";
 
 /**
