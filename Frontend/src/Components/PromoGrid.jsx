@@ -7,7 +7,7 @@ const promos = [
     alt: "Banner 1",
     headline: "Mega Electronics Sale",
     cta: "Shop Now",
-    href: "/electronics",
+    href: "/category?cat=electronic",
     span: "lg:col-span-2 lg:row-span-1",
   },
   {
@@ -15,7 +15,7 @@ const promos = [
     alt: "Banner 2",
     headline: "Cashback Offers",
     cta: "Grab Offer",
-    href: "/offers",
+    href: "/category?cat=fashion",
     span: "lg:col-span-1 lg:row-span-2",
   },
   {
@@ -23,7 +23,7 @@ const promos = [
     alt: "Banner 3",
     headline: "Fashion Fest",
     cta: "Explore",
-    href: "/fashion",
+    href: "/category?cat=cosmetic",
     span: "lg:col-span-1 lg:row-span-2",
   },
   {
@@ -31,7 +31,7 @@ const promos = [
     alt: "Banner 4",
     headline: "Beauty Deals",
     cta: "Shop Beauty",
-    href: "/beauty",
+    href: "/category?cat=cosmetic",
     span: "lg:col-span-1 lg:row-span-1",
   },
   {
@@ -39,7 +39,7 @@ const promos = [
     alt: "Banner 5",
     headline: "Home Essentials",
     cta: "Upgrade Home",
-    href: "/home",
+    href: "/category?cat=furniture",
     span: "lg:col-span-2 lg:row-span-1",
   },
 ];

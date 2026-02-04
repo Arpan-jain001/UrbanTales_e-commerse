@@ -391,7 +391,7 @@ export default function ContactUs() {
         {/* CTA Section */}
         <div className="bg-white py-12 text-center">
           <h2 className="text-2xl font-bold mb-4">
-            Ready to experience the ease and excitement of shopping with Zarvoc?
+            Ready to experience the ease and excitement of shopping with UrbanTales?
           </h2>
           <div className="space-x-4">
             <Link to="/">

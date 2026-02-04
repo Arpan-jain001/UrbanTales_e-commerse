@@ -1,4 +1,5 @@
 import React from "react";
+import { motion } from "framer-motion";
 
 const reviews = [
   {
@@ -15,7 +16,7 @@ const reviews = [
   },
   {
     name: "Amit Verma",
-    text: "The customer support at SuperMarket highly recommended for daily needs!",
+    text: "The customer support is amazing. Highly recommended for daily needs!",
     image:
       "https://i.pinimg.com/736x/86/bc/f3/86bcf364a2d6328d9b9cd00e4edee2b4.jpg",
   },
@@ -27,35 +28,88 @@ const reviews = [
   },
 ];
 
+const container = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.2 },
+  },
+};
+
+const card = {
+  hidden: { opacity: 0, y: 40 },
+  show: { opacity: 1, y: 0 },
+};
+
 const ReviewCard = ({ name, text, image }) => (
-  <div className="bg-[#d8d8d8] rounded-[18px] w-[22vw] min-w-[260px] max-w-[340px] h-[260px] relative flex flex-col items-center justify-end mb-8">
-    <div className="absolute -top-[73px] left-1/2 transform -translate-x-1/2 w-[110px] h-[110px] bg-white rounded-full border-[4px] border-[#efefef] flex items-center justify-center overflow-hidden z-10">
-      <img
-        src={image}
-        alt={name}
-        className="w-full h-full object-cover rounded-full"
-      />
+  <motion.div
+    variants={card}
+    whileHover={{ y: -10, scale: 1.03 }}
+    transition={{ type: "spring", stiffness: 200 }}
+    className="relative bg-white/60 backdrop-blur-xl rounded-2xl shadow-xl
+               w-[320px] h-[280px] px-6 pt-16 pb-6 flex flex-col items-center
+               hover:shadow-2xl border border-white/40"
+  >
+    {/* Avatar */}
+    <div className="absolute -top-14 w-28 h-28 rounded-full border-[5px] border-white shadow-lg overflow-hidden bg-white">
+      <img src={image} alt={name} className="w-full h-full object-cover" />
     </div>
-    <div className="font-bold text-[1.1rem] mt-[70px] mb-1 text-center">
-      {name}
-    </div>
-    <div className="text-base text-[#333] mb-3 text-center px-3">{text}</div>
-    <div className="mb-8 mt-6 text-center text-[#e7d069] text-[2rem] drop-shadow">
-      {"★★★★★"}
-    </div>
-  </div>
+
+    {/* Name */}
+    <h3 className="font-bold text-lg mt-4 text-gray-800">{name}</h3>
+
+    {/* Review */}
+    <p className="text-sm text-gray-600 text-center mt-3 leading-relaxed">
+      {text}
+    </p>
+
+    {/* Stars */}
+    <motion.div
+      initial={{ scale: 0 }}
+      animate={{ scale: 1 }}
+      transition={{ delay: 0.4 }}
+      className="mt-auto text-yellow-400 text-xl tracking-wide"
+    >
+      ★★★★★
+    </motion.div>
+  </motion.div>
 );
 
 const CustomerReviews = () => {
   return (
-    <section className="bg-[#efefef] pt-4 pb-12 w-full font-sans relative">
-      <h2 className="text-[2.5rem] font-semibold text-center mb-[20px]">Customer Reviews</h2>
+    <section className="relative py-20 bg-gradient-to-br from-[#f3f4f6] via-[#eeeeee] to-[#f9fafb] overflow-hidden">
+      
+      {/* Decorative Blur */}
+      <div className="absolute top-0 left-0 w-72 h-72 bg-yellow-300/20 rounded-full blur-3xl" />
+      <div className="absolute bottom-0 right-0 w-72 h-72 bg-orange-400/20 rounded-full blur-3xl" />
 
-      <div className="flex flex-wrap justify-around gap-3 px-8 mt-25">
+      {/* Heading */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        className="text-center mb-16 relative z-10"
+      >
+        <h2 className="text-4xl font-extrabold text-gray-800">
+          What Our Customers Say
+        </h2>
+        <p className="mt-3 text-gray-600 max-w-xl mx-auto">
+          Real experiences from people who trust SuperMarket for their daily needs.
+        </p>
+      </motion.div>
+
+      {/* Cards */}
+      <motion.div
+        variants={container}
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true }}
+        className="relative z-10 flex flex-wrap justify-center gap-10 px-6"
+      >
         {reviews.map((review, index) => (
           <ReviewCard key={index} {...review} />
         ))}
-      </div>
+      </motion.div>
     </section>
   );
 };
