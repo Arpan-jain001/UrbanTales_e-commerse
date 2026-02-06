@@ -227,38 +227,434 @@ function MobileSidebarCategory({ item, onNavigate }) {
   );
 }
 
-/* ---------- SearchBar ---------- */
+/* ---------- SearchBar (Fixed dropdown + outside click close + reopen on click) ---------- */
 function SearchBar({ onSearch }) {
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+
+  const [recent, setRecent] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("ut_recent_search") || "[]");
+    } catch {
+      return [];
+    }
+  });
+
+  const [suggestions, setSuggestions] = useState([]);
+  const [loadingSug, setLoadingSug] = useState(false);
+
   const navigate = useNavigate();
 
-  function submit(e) {
-    e.preventDefault();
+  const wrapRef = React.useRef(null); // ✅ input + dropdown wrapper (dropdown is fixed but still inside component tree)
+  const inputRef = React.useRef(null);
+  const debounceRef = React.useRef(null);
+  const typedRef = React.useRef(""); // ✅ user typed text (never overwritten)
+
+  // ✅ fixed dropdown position
+  const [dropPos, setDropPos] = useState({ left: 0, top: 0, width: 0 });
+
+  const closeDropdown = React.useCallback(() => {
+    setOpen(false);
+    setActive(-1);
+  }, []);
+
+  const updateDropdownPos = React.useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+
+    const r = el.getBoundingClientRect();
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8));
+    const top = r.bottom + 8;
+
+    setDropPos({ left, top, width: r.width });
+  }, []);
+
+  // ✅ close on outside click (anywhere except searchbar/dropdown)
+  useEffect(() => {
+    const handler = (e) => {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(e.target)) closeDropdown();
+    };
+
+    // capture phase = reliable
+    document.addEventListener("pointerdown", handler, true);
+    return () => document.removeEventListener("pointerdown", handler, true);
+  }, [closeDropdown]);
+
+  // ✅ close on scroll
+  useEffect(() => {
+    if (!open) return;
+
+    const onAnyScroll = () => closeDropdown();
+    window.addEventListener("wheel", onAnyScroll, { passive: true });
+    window.addEventListener("touchmove", onAnyScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("wheel", onAnyScroll);
+      window.removeEventListener("touchmove", onAnyScroll);
+    };
+  }, [open, closeDropdown]);
+
+  // ✅ keep fixed dropdown aligned while open
+  useEffect(() => {
+    if (!open) return;
+
+    const onMove = () => updateDropdownPos();
+    window.addEventListener("resize", onMove);
+    window.addEventListener("scroll", onMove, true);
+
+    return () => {
+      window.removeEventListener("resize", onMove);
+      window.removeEventListener("scroll", onMove, true);
+    };
+  }, [open, updateDropdownPos]);
+
+  const saveRecent = (q) => {
+    const clean = (q || "").trim();
+    if (!clean) return;
+    const next = [clean, ...recent.filter((x) => x !== clean)].slice(0, 6);
+    setRecent(next);
+    localStorage.setItem("ut_recent_search", JSON.stringify(next));
+  };
+
+  const clearRecent = () => {
+    setRecent([]);
+    localStorage.removeItem("ut_recent_search");
+  };
+
+  const runTypedSearch = (q) => {
+    const clean = (q || "").trim();
+    if (!clean) return;
+    saveRecent(clean);
+    closeDropdown();
+    if (onSearch) onSearch(clean);
+    else navigate(`/search?q=${encodeURIComponent(clean)}`);
+  };
+
+  const openProduct = (p) => {
+    if (!p?._id) return;
+    saveRecent((typedRef.current || query || "").trim());
+    closeDropdown();
+    navigate(`/product/${p._id}`);
+  };
+
+  // ---------- "AI Search" fallback (typo-friendly without backend change) ----------
+  const normalize = (s) =>
+    (s || "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/(.)\1{2,}/g, "$1$1");
+
+  const aiQueries = (q) => {
+    const n = normalize(q);
+    if (!n) return [];
+    const tokens = n.split(" ").filter(Boolean);
+
+    const out = new Set();
+    out.add(n);
+    out.add(n.replace(/\s/g, ""));
+    if (n.length >= 4) out.add(n.slice(0, n.length - 1));
+    if (n.length >= 4) out.add(n.slice(0, 4));
+
+    tokens.forEach((t) => {
+      if (t.length >= 3) out.add(t);
+      if (t.length >= 4) out.add(t.slice(0, 3));
+      if (t.length >= 5) out.add(t.slice(0, 4));
+    });
+
+    return Array.from(out).slice(0, 8);
+  };
+
+  const fetchSearch = async (q) => {
+    const res = await fetch(
+      `${BASE_API_URL}/api/products/search?q=${encodeURIComponent(q)}`
+    );
+    const data = await res.json();
+    if (!res.ok) return [];
+    return Array.isArray(data) ? data : [];
+  };
+
+  // ✅ suggestions fetch (debounce). Also show default suggestions when empty.
+  useEffect(() => {
+    if (!open) return;
+
     const q = query.trim();
-    if (!q) return;
-    if (onSearch) onSearch(q);
-    else navigate(`/search?q=${encodeURIComponent(q)}`);
-  }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        setLoadingSug(true);
+
+        // empty input -> default suggestions
+        if (!q) {
+          let base = await fetchSearch("a");
+          if (!base.length) base = await fetchSearch("s");
+          setSuggestions(base.slice(0, 6));
+          return;
+        }
+
+        // normal suggestions
+        let base = await fetchSearch(q);
+
+        // fallback if none
+        if (!base.length) {
+          const tries = aiQueries(q);
+          const merged = new Map();
+
+          for (const t of tries) {
+            const res = await fetchSearch(t);
+            for (const p of res) if (p && p._id) merged.set(p._id, p);
+            if (merged.size >= 10) break;
+          }
+
+          base = Array.from(merged.values());
+        }
+
+        setSuggestions(base.slice(0, 6));
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setLoadingSug(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(debounceRef.current);
+  }, [query, open]);
+
+  // ✅ IMPORTANT: reopen dropdown whenever you click/focus input
+  const openDropdown = () => {
+    typedRef.current = query;
+    setActive(-1);
+    updateDropdownPos();
+
+    // force reopen even if state already true
+    setOpen(false);
+    requestAnimationFrame(() => setOpen(true));
+  };
+
+  const onChange = (e) => {
+    const val = e.target.value;
+    setQuery(val);
+    typedRef.current = val;
+    setActive(-1);
+    updateDropdownPos();
+    setOpen(true);
+  };
+
+  const onKeyDown = (e) => {
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !open) {
+      updateDropdownPos();
+      setOpen(true);
+    }
+
+    const isTyping = !!typedRef.current.trim();
+    const list = isTyping ? suggestions : recent;
+
+    if (e.key === "Escape") {
+      closeDropdown();
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!list.length) return;
+      setActive((v) => (v + 1 > list.length - 1 ? 0 : v + 1)); // wrap down
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!list.length) return;
+
+      // first -> focus input (no wrap up)
+      setActive((v) => {
+        if (v <= 0) {
+          requestAnimationFrame(() => inputRef.current?.focus());
+          return -1;
+        }
+        return v - 1;
+      });
+      return;
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+
+      if (typedRef.current.trim() && suggestions.length && active >= 0) {
+        openProduct(suggestions[active]);
+        return;
+      }
+
+      if (!typedRef.current.trim() && recent.length && active >= 0) {
+        runTypedSearch(recent[active]);
+        return;
+      }
+
+      runTypedSearch(typedRef.current || query);
+    }
+  };
+
+  const isTyping = !!typedRef.current.trim();
 
   return (
-    <form onSubmit={submit} className="relative w-full">
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search for products..."
-        className="w-full pl-10 pr-20 py-2.5 border border-gray-300 rounded-full shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#070A52] focus:border-[#070A52] text-sm"
-      />
-      <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-      <button
-        type="submit"
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-white bg-[#070A52] hover:bg-[#0A0F6D] px-4 py-1.5 rounded-full transition"
+    <div ref={wrapRef} className="relative w-full z-[9999] isolate">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          runTypedSearch(typedRef.current || query);
+        }}
+        className="relative w-full"
       >
-        Go
-      </button>
-    </form>
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={onChange}
+          onFocus={openDropdown}
+          onClick={openDropdown} // ✅ reopen on click too
+          onKeyDown={onKeyDown}
+          placeholder="Search for products..."
+          className="w-full pl-10 pr-20 py-2.5 border border-gray-300 rounded-full shadow-sm placeholder-gray-400
+                     focus:outline-none focus:ring-2 focus:ring-[#070A52] focus:border-[#070A52] text-sm"
+        />
+
+        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+
+        <button
+          type="submit"
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-white
+                     bg-[#070A52] hover:bg-[#0A0F6D] px-4 py-1.5 rounded-full transition"
+        >
+          Go
+        </button>
+      </form>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.15 }}
+            className="fixed z-[9999] bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden"
+            style={{
+              left: dropPos.left,
+              top: dropPos.top,
+              width: dropPos.width,
+            }}
+          >
+            {/* Recent */}
+            <div className="p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Recent Searches
+                </p>
+
+                {recent.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearRecent}
+                    className="text-xs font-semibold text-red-600 hover:underline"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {recent.length === 0 ? (
+                <p className="text-sm text-gray-500 px-1 py-2">
+                  No recent searches
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {recent.map((r, idx) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onMouseEnter={() => setActive(isTyping ? -1 : idx)}
+                      onClick={() => runTypedSearch(r)}
+                      className={`px-3 py-1.5 rounded-full border text-sm transition ${
+                        !isTyping && active === idx
+                          ? "border-[#070A52] bg-gray-200/70 text-[#070A52]"
+                          : "border-gray-200 bg-gray-100 hover:bg-gray-200/60"
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Suggestions */}
+            <div className="p-2 border-t border-gray-200">
+              <div className="px-2 py-2 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Suggestions
+                </p>
+                {loadingSug && (
+                  <span className="text-xs text-gray-400">loading…</span>
+                )}
+              </div>
+
+              {!loadingSug && suggestions.length === 0 ? (
+                <p className="text-sm text-gray-500 px-3 py-2">
+                  No suggestions
+                </p>
+              ) : (
+                <div className="max-h-80 overflow-auto">
+                  {suggestions.map((p, idx) => (
+                    <button
+                      key={p._id || idx}
+                      type="button"
+                      onMouseEnter={() => setActive(isTyping ? idx : -1)}
+                      onClick={() => openProduct(p)}
+                      className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-xl transition ${
+                        isTyping && active === idx
+                          ? "bg-gray-200/70"
+                          : "hover:bg-gray-200/60"
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 overflow-hidden flex items-center justify-center">
+                        {p?.image ? (
+                          <img
+                            src={p.image}
+                            alt={p.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) =>
+                              (e.currentTarget.style.display = "none")
+                            }
+                          />
+                        ) : (
+                          <PackageOpen className="w-5 h-5 text-gray-400" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-gray-900 truncate">
+                          {p.name}
+                        </p>
+                        <p className="text-xs text-gray-600 truncate">
+                          {p.category} • ₹{p.price}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
+
+
+
 
 /* ---------- Badge ---------- */
 function Badge({ count }) {
@@ -564,7 +960,7 @@ const Navbar = ({ cartCount, onSearch, notificationCount }) => {
 
               {/* Footer Info */}
               <div className="p-4 text-center text-sm text-gray-500">
-                <p>© 2025 UrbanTales</p>
+                <p>© 2026 UrbanTales</p>
                 <p className="text-xs mt-1">Shop with confidence</p>
               </div>
             </motion.div>

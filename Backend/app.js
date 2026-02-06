@@ -20,6 +20,8 @@ import razorpayRoutes from './routes/razorpay.js';
 import reviewRoutes from './routes/review.routes.js';
 import uploadRoutes from './routes/uploadRoutes.js'; // ✅ new
 import notificationRoutes from "./routes/notificationRoutes.js";
+import productSearchRoutes from "./routes/productSearch.routes.js";
+import userProfileRoutes from "./routes/userProfile.routes.js";
 
 // Admin panel
 import adminAuthRoutes from "./routes/adminAuthRoutes.js";
@@ -51,6 +53,7 @@ app.use('/api/upload', uploadRoutes);
 
 // ✅ Main API Routes
 app.use('/api/users', userRoutes);
+app.use("/api/products", productSearchRoutes); 
 app.use('/api/products', productRoutes);
 app.use('/api/sellers', sellerRoutes);
 app.use('/api/auth', authRoutes);
@@ -64,6 +67,7 @@ app.use('/api/sellers/notifications', sellerNotificationRoutes);
 app.use('/api/razorpay', razorpayRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/users", userProfileRoutes);
 
 // Admin panel
 app.use("/api/admin", adminAuthRoutes);

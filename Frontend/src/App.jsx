@@ -34,6 +34,8 @@ import ResetPasswordRequest from './Pages/ResetPasswordRequest.jsx'; // ✅
 import ResetPasswordOTP from './Pages/ResetPasswordOTP.jsx'; // ✅
 import ResetPasswordConfirm from './Pages/ResetPasswordConfirm.jsx'; // ✅
 import Ai from './Components/Ai.jsx'; // ✅
+import Search from "./Pages/Search.jsx";
+
 
 // ==== SELLER CONTEXT & PAGES ====
 import SellerLogin from "./seller/pages/SellerLogin.jsx"; // ✅
@@ -120,6 +122,8 @@ function App() {
                 <Route path="/reset-password/confirm" element={<ResetPasswordConfirm />} />
                 <Route path="/under-construction" element={<UnderConstruction />} />
                 <Route path="/product/:id" element={<SingleProduct />} />
+                <Route path="/search" element={<Search />} />
+
 
                 {/* SELLER ROUTES */}
                 <Route path="/sellerlogin" element={<SellerLogin />} />
