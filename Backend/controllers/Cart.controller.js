@@ -1,6 +1,8 @@
 import Cart from "../models/Cart.js";
 
-// Get user's cart
+const buildCartItemKey = (item) =>
+  [item.id, item.selectedSize || "", item.selectedColor || ""].join("::");
+
 export const getCart = async (req, res) => {
   try {
     const cart = await Cart.findOne({ userId: req.userId });
@@ -13,33 +15,52 @@ export const getCart = async (req, res) => {
   }
 };
 
-// Add item to cart
 export const addToCart = async (req, res) => {
   const { item } = req.body;
   try {
+    const normalizedItem = {
+      id: item.id,
+      sellerId: item.sellerId || "",
+      name: item.name || "",
+      price: Number(item.price || 0),
+      image: item.image || item.selectedColorImage || "",
+      qty: Number(item.qty || 1),
+      selectedSize: item.selectedSize || "",
+      selectedColor: item.selectedColor || "",
+      selectedColorImage: item.selectedColorImage || "",
+    };
+
     let cart = await Cart.findOne({ userId: req.userId });
     if (!cart) {
-      cart = new Cart({ userId: req.userId, items: [item] });
+      cart = new Cart({ userId: req.userId, items: [normalizedItem] });
     } else {
-      const existingItem = cart.items.find((i) => i.id === item.id);
-      if (existingItem) existingItem.qty += item.qty;
-      else cart.items.push(item);
+      const key = buildCartItemKey(normalizedItem);
+      const existingItem = cart.items.find((cartItem) => buildCartItemKey(cartItem) === key);
+      if (existingItem) existingItem.qty += normalizedItem.qty;
+      else cart.items.push(normalizedItem);
     }
     await cart.save();
     const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
     res.status(200).json({ msg: "Item added", cart, subtotal });
   } catch (err) {
+    console.error("Add to cart failed:", err);
     res.status(500).json({ msg: "Server error" });
   }
 };
 
-// Remove item from cart
 export const removeFromCart = async (req, res) => {
-  const { itemId } = req.body;
+  const { itemId, selectedSize = "", selectedColor = "" } = req.body;
   try {
     const cart = await Cart.findOne({ userId: req.userId });
     if (!cart) return res.status(404).json({ msg: "Cart not found" });
-    cart.items = cart.items.filter((item) => item.id !== itemId);
+    cart.items = cart.items.filter(
+      (item) =>
+        !(
+          item.id === itemId &&
+          String(item.selectedSize || "") === String(selectedSize || "") &&
+          String(item.selectedColor || "") === String(selectedColor || "")
+        )
+    );
     await cart.save();
     const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
     res.status(200).json({ msg: "Item removed", cart, subtotal });
@@ -48,15 +69,19 @@ export const removeFromCart = async (req, res) => {
   }
 };
 
-// Update quantity in cart
 export const updateQtyInCart = async (req, res) => {
-  const { itemId, qty } = req.body;
+  const { itemId, qty, selectedSize = "", selectedColor = "" } = req.body;
   try {
     const cart = await Cart.findOne({ userId: req.userId });
     if (!cart) return res.status(404).json({ msg: "Cart not found" });
-    const item = cart.items.find((i) => i.id === itemId);
+    const item = cart.items.find(
+      (cartItem) =>
+        cartItem.id === itemId &&
+        String(cartItem.selectedSize || "") === String(selectedSize || "") &&
+        String(cartItem.selectedColor || "") === String(selectedColor || "")
+    );
     if (!item) return res.status(404).json({ msg: "Item not found" });
-    item.qty = qty;
+    item.qty = Number(qty);
     await cart.save();
     const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
     res.status(200).json({ msg: "Quantity updated", cart, subtotal });
@@ -65,13 +90,9 @@ export const updateQtyInCart = async (req, res) => {
   }
 };
 
-// Clear user's cart after successful payment
 export const clearCart = async (req, res) => {
   try {
-    await Cart.findOneAndUpdate(
-      { userId: req.userId },
-      { $set: { items: [] } }
-    );
+    await Cart.findOneAndUpdate({ userId: req.userId }, { $set: { items: [] } });
     res.status(200).json({ msg: "Cart cleared" });
   } catch (err) {
     res.status(500).json({ msg: "Server error" });

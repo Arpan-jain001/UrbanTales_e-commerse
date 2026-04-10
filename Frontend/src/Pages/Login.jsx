@@ -6,6 +6,7 @@ import { auth, provider } from "../../utils/firebase";
 import Navbar from "../Components/Navbar";
 import Footer from "../Components/Footer";
 import { motion, AnimatePresence } from "framer-motion";
+import { saveUserAuth } from "../utils/authStorage";
 
 const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
@@ -209,18 +210,6 @@ const Login = () => {
     window.__toastTimer = window.setTimeout(() => setToast(null), 2600);
   };
 
-  const saveAuth = (token, user) => {
-    const store = rememberMe ? localStorage : sessionStorage;
-
-    store.setItem("isLoggedIn", "true");
-    store.setItem("token", token);
-    store.setItem("user", JSON.stringify(user));
-    store.setItem("userId", user?._id || user?.id || "");
-
-    // compatibility
-    localStorage.setItem("isLoggedIn", "true");
-  };
-
   const successFlow = async () => {
     setShowSuccess(true);
     fireToast("success", "Welcome back! ✅ Login successful.");
@@ -243,11 +232,23 @@ const Login = () => {
         password,
       });
 
-      saveAuth(data.token, data.user);
+      saveUserAuth(data.token, data.user);
       setIsLoading(false);
       await successFlow();
     } catch (err) {
-      const msg = err.response?.data?.message || "Login failed.";
+      const apiError = err.response?.data || {};
+      if (apiError?.requiresVerification) {
+        setIsLoading(false);
+        navigate("/verify-account", {
+          state: {
+            email,
+            actor: "user",
+            verificationDeadline: apiError.verificationDeadline,
+          },
+        });
+        return;
+      }
+      const msg = apiError?.message || "Login failed.";
       setError(msg);
       fireToast("error", msg);
       setIsLoading(false);
@@ -270,7 +271,7 @@ const Login = () => {
         { token: idToken }
       );
 
-      saveAuth(response.data.token, response.data.user);
+      saveUserAuth(response.data.token, response.data.user);
       setIsLoading(false);
       await successFlow();
     } catch (err) {

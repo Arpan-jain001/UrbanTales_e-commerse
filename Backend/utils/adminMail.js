@@ -1,17 +1,10 @@
-import sgMail from "@sendgrid/mail";
 import dotenv from "dotenv";
+import { sendEmail } from "./resendClient.js";
 
 dotenv.config();
 
-// Initialize SendGrid
-if (!process.env.SENDGRID_API_KEY) {
-  console.error("⚠️  SENDGRID_API_KEY missing in .env file");
-} else {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-}
-
 // Email sender configuration
-const FROM_EMAIL = "urbantales.team@gmail.com";
+const FROM_EMAIL = process.env.EMAIL_FROM || "no-reply@urbantales-ecommerce.in";
 const FROM_NAME = "Urbantales-admin";
 
 /**
@@ -20,7 +13,13 @@ const FROM_NAME = "Urbantales-admin";
 async function sendEmailWithRetry(mailOptions, retries = 2) {
   for (let attempt = 1; attempt <= retries + 1; attempt++) {
     try {
-      await sgMail.send(mailOptions);
+      await sendEmail({
+        to: mailOptions.to,
+        subject: mailOptions.subject,
+        html: mailOptions.html,
+        text: mailOptions.text,
+        fromName: FROM_NAME,
+      });
       return { success: true };
     } catch (error) {
       console.error(

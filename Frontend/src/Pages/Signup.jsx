@@ -279,15 +279,20 @@ const Signup = () => {
     setError("");
   };
 
-  const successFlow = async () => {
+  const successFlow = async (responseData) => {
     setShowSuccess(true);
     fireToast(
       "success",
-      "Signup successful 🎉 A welcome email has been sent. Please check your Spam folder as well."
+      "Signup successful. Please verify your account from the email or OTP screen."
     );
     await new Promise((r) => setTimeout(r, 1200));
     setShowSuccess(false);
-    navigate("/login");
+    navigate("/verify-account", {
+      state: {
+        email: responseData?.email || formData.email,
+        actor: "user",
+      },
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -304,9 +309,9 @@ const Signup = () => {
     setError("");
 
     try {
-      await axios.post(`${BASE_API_URL}/api/users/signup`, formData);
+      const { data } = await axios.post(`${BASE_API_URL}/api/users/signup`, formData);
       setSubmitting(false);
-      await successFlow();
+      await successFlow(data);
     } catch (err) {
       const msg = err.response?.data?.message || "Something went wrong.";
       setError(msg);
@@ -390,13 +395,13 @@ const Signup = () => {
                   </div>
                   <div>
                     <p className="font-semibold text-slate-900">
-                      Important — Welcome Email
+                      Important — Verification First
                     </p>
                     <p className="mt-1 text-slate-600 leading-relaxed">
-                      As soon as your account is created, a <b>Welcome Email</b>{" "}
-                      will be sent to your registered email address. If you do
-                      not see it in your inbox, please check your{" "}
-                      <b>Spam</b> folder as well.
+                      After signup, a <b>verification email</b> will be sent
+                      first. Your <b>welcome email</b> will be sent only after
+                      your account is verified. If you do not see the mail in
+                      your inbox, please check your <b>Spam</b> folder as well.
                     </p>
                   </div>
                 </div>
@@ -602,10 +607,10 @@ const Signup = () => {
                       <span className="text-slate-700">
                         <Icon name="mail" />
                       </span>
-                      Welcome Email
+                      Verification Email
                     </div>
                     <p className="text-sm text-slate-600 mt-1">
-                      Sent immediately after signup — check Inbox and Spam.
+                      Sent immediately after signup. Welcome mail is sent after verification.
                     </p>
                   </motion.div>
 

@@ -1,33 +1,44 @@
 import mongoose from "mongoose";
 
-const orderItemSchema = new mongoose.Schema({
-  id: { type: String, required: true },
-  name: String,
-  price: Number,
-  image: String,
-  qty: Number,
-  status: { type: String, default: "Pending" }
-});
-const orderSchema = new mongoose.Schema({
-  orderId: { type: String, unique: true, index: true },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  items: [orderItemSchema],
-  orderStatus: {
-    type: String,
-    enum: ["Placed", "Shipped", "Out for Delivery", "Delivered", "Cancelled", "Returned", "Pending"],
-    default: "Pending",
+const orderItemSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true },
+    sellerId: { type: String, default: "" },
+    name: { type: String, default: "" },
+    price: { type: Number, default: 0 },
+    image: { type: String, default: "" },
+    qty: { type: Number, default: 1 },
+    selectedSize: { type: String, default: "" },
+    selectedColor: { type: String, default: "" },
+    selectedColorImage: { type: String, default: "" },
+    status: { type: String, default: "Pending" },
   },
-  paymentMethod: String,
-  paymentStatus: String,
-  totalAmount: Number,
-  deliveredAt: Date,
-  name: String,
-  mobile: String,
-  address: String,
-  instructions: String,
-  returnReason: String,
-  returnStatus: String,
-}, { timestamps: true });
+  { _id: false }
+);
 
-export default mongoose.model("Order", orderSchema);
+const orderSchema = new mongoose.Schema(
+  {
+    orderId: { type: String, unique: true, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    items: { type: [orderItemSchema], default: [] },
+    orderStatus: {
+      type: String,
+      enum: ["Placed", "Shipped", "Out for Delivery", "Delivered", "Cancelled", "Returned", "Pending"],
+      default: "Pending",
+    },
+    paymentMethod: { type: String, default: "" },
+    paymentStatus: { type: String, default: "" },
+    totalAmount: { type: Number, default: 0 },
+    deliveredAt: { type: Date, default: null },
+    name: { type: String, default: "" },
+    mobile: { type: String, default: "" },
+    address: { type: String, default: "" },
+    instructions: { type: String, default: "" },
+    returnReason: { type: String, default: "" },
+    returnStatus: { type: String, default: "" },
+  },
+  { timestamps: true }
+);
+
+export default mongoose.models.Order || mongoose.model("Order", orderSchema);
   

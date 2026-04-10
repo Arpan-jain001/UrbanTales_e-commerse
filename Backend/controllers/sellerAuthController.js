@@ -1,211 +1,347 @@
-import Seller from "../models/Seller.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import { OAuth2Client } from "google-auth-library";
+import Seller from "../models/Seller.js";
 import { sendSellerOtpMail } from "../utils/SellersendOtpMail.js";
-import { OAuth2Client } from "google-auth-library"; // For Google Token verification
 import { sendSellerWelcomeMail } from "../utils/sendSellerWelcomeMail.js";
+import {
+  applyVerificationArtifacts,
+  clearVerificationState,
+  createVerificationArtifacts,
+  findAccountByVerification,
+  isVerificationWindowExpired,
+  sendVerificationEmail,
+} from "../utils/verificationService.js";
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID; // Set your Google Client ID
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
-// 🔧 Generate unique username
-function generateUsername(fullName) {
-  const base = fullName.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
+function generateUsername(fullName = "seller") {
+  const base = fullName
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9\-]/g, "") || "seller";
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `${base}-${rand}`;
 }
 
-// 🔐 Create JWT
-function createJwt(seller) {
-  return jwt.sign({ id: seller._id }, process.env.SELLER_JWT_SECRET, { expiresIn: "7d" });
+async function createUniqueUsername(fullName) {
+  let username = generateUsername(fullName);
+  while (await Seller.findOne({ username })) {
+    username = generateUsername(fullName);
+  }
+  return username;
 }
 
-// 🧾 SELLER SIGNUP
+function createSellerJwt(seller) {
+  return jwt.sign({ id: seller._id.toString() }, process.env.SELLER_JWT_SECRET, {
+    expiresIn: "7d",
+  });
+}
+
+function serializeSeller(seller) {
+  return {
+    _id: seller._id,
+    fullName: seller.fullName,
+    username: seller.username,
+    email: seller.email,
+    phone: seller.phone,
+    shopName: seller.shopName,
+    address: seller.address,
+    bio: seller.bio,
+    avatar: seller.avatar,
+    isVerified: Boolean(seller.isVerified),
+  };
+}
+
+async function sendVerificationForSeller(seller, { preserveDeadline = true, isReminder = false } = {}) {
+  const artifacts = createVerificationArtifacts(seller, { preserveDeadline });
+  applyVerificationArtifacts(seller, artifacts, { isReminder });
+  await seller.save();
+  await sendVerificationEmail({ actor: "seller", account: seller, isReminder });
+}
+
+async function sendSellerWelcomeMailOnce(seller) {
+  if (seller.welcomeEmailSentAt) {
+    return;
+  }
+
+  await sendSellerWelcomeMail(seller.email, seller.fullName || seller.shopName || "Seller");
+  seller.welcomeEmailSentAt = new Date();
+  await seller.save();
+}
+
 export async function signup(req, res) {
   try {
     const { fullName, username, email, phone, shopName, address, bio, password } = req.body;
+    const normalizedEmail = String(email || "").toLowerCase().trim();
 
-    const exists = await Seller.findOne({ email });
-    if (exists) return res.status(400).json({ error: "Seller with this email already exists!" });
-
-    // Generate a unique username
-    let autoUsername = username || generateUsername(fullName);
-    let _username = autoUsername;
-    let taken = await Seller.findOne({ username: _username });
-    while (taken) {
-      _username = autoUsername.replace(/-\d+$/, "") + "-" + Math.floor(1000 + Math.random() * 9000);
-      taken = await Seller.findOne({ username: _username });
+    const exists = await Seller.findOne({ email: normalizedEmail });
+    if (exists) {
+      return res.status(400).json({ error: "Seller with this email already exists!" });
     }
 
-    // Hash password and create seller
+    const uniqueUsername = username ? username.trim() : await createUniqueUsername(fullName);
     const hash = await bcrypt.hash(password, 10);
-    const seller = await Seller.create({
+
+    const seller = new Seller({
       fullName,
-      username: _username,
-      email,
+      username: uniqueUsername,
+      email: normalizedEmail,
       phone,
       shopName,
       address,
       bio,
       password: hash,
+      authProvider: "local",
     });
 
-    // Generate JWT
-    const token = createJwt(seller);
-
-    // ✅ Send Welcome Email (non-blocking)
-    try {
-      await sendSellerWelcomeMail(email, fullName);
-      console.log(`✅ Seller welcome email sent to ${email}`);
-    } catch (mailError) {
-      console.error("⚠️ Failed to send seller welcome email:", mailError.message);
-    }
+    await sendVerificationForSeller(seller, { preserveDeadline: false });
 
     res.status(201).json({
-      token,
-      seller: {
-        _id: seller._id,
-        fullName,
-        username: _username,
-        email,
-        phone,
-        shopName,
-        address,
-        bio,
-      },
+      message: "Seller signup successful. Please verify your account.",
+      requiresVerification: true,
+      email: seller.email,
+      seller: serializeSeller(seller),
+      verificationDeadline: seller.verificationDeadline,
     });
   } catch (err) {
-    console.error("❌ Seller Signup Error:", err);
-    res.status(400).json({ error: err.message });
+    console.error("Seller Signup Error:", err);
+    res.status(400).json({ error: err.message || "Signup failed" });
   }
 }
 
-// 🔑 SELLER LOGIN
 export async function login(req, res) {
   try {
     const { email, password } = req.body;
-    const seller = await Seller.findOne({ email });
-    if (!seller) return res.status(400).json({ error: "Invalid credentials" });
+    const normalizedEmail = String(email || "").toLowerCase().trim();
+    const seller = await Seller.findOne({ email: normalizedEmail });
+
+    if (!seller) {
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
 
     const isMatch = await bcrypt.compare(password, seller.password);
-    if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
+    if (!isMatch) {
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
 
-    const token = createJwt(seller);
+    if (!seller.isVerified) {
+      if (!isVerificationWindowExpired(seller)) {
+        try {
+          const hoursSinceLastEmail = seller.lastVerificationEmailSentAt
+            ? (Date.now() - new Date(seller.lastVerificationEmailSentAt).getTime()) /
+              (1000 * 60 * 60)
+            : Infinity;
+          if (hoursSinceLastEmail >= 24) {
+            await sendVerificationForSeller(seller, { preserveDeadline: true, isReminder: true });
+          }
+        } catch (mailError) {
+          console.error("Seller verification reminder send failed:", mailError.message);
+        }
+      }
+
+      const windowExpired = isVerificationWindowExpired(seller);
+      return res.status(403).json({
+        code: windowExpired ? "VERIFICATION_WINDOW_EXPIRED" : "UNVERIFIED_ACCOUNT",
+        error: windowExpired
+          ? "Your verification window has expired. Please contact admin."
+          : "Please verify your seller account before logging in.",
+        requiresVerification: true,
+        email: seller.email,
+        verificationDeadline: seller.verificationDeadline,
+      });
+    }
+
+    const token = createSellerJwt(seller);
 
     res.json({
       token,
-      seller: {
-        _id: seller._id,
-        fullName: seller.fullName,
-        username: seller.username,
-        email: seller.email,
-        phone: seller.phone,
-        shopName: seller.shopName,
-        address: seller.address,
-        bio: seller.bio,
-      },
+      seller: serializeSeller(seller),
     });
   } catch (err) {
-    console.error("❌ Seller Login Error:", err);
+    console.error("Seller Login Error:", err);
     res.status(500).json({ error: "Login failed" });
   }
 }
 
-// 🌐 GOOGLE SELLER AUTH (LOGIN / SIGNUP)
+export async function verifyAccount(req, res) {
+  const { email, otp, token } = req.body;
+
+  try {
+    const seller = await findAccountByVerification(Seller, { email, token });
+
+    if (!seller) {
+      return res.status(404).json({ error: "Seller not found" });
+    }
+
+    if (seller.isVerified) {
+      return res.json({
+        message: "Seller already verified",
+        token: createSellerJwt(seller),
+        seller: serializeSeller(seller),
+      });
+    }
+
+    if (isVerificationWindowExpired(seller)) {
+      return res.status(403).json({
+        code: "VERIFICATION_WINDOW_EXPIRED",
+        error: "Verification window expired. Please contact admin.",
+      });
+    }
+
+    const tokenMatches =
+      token &&
+      seller.verificationToken === token &&
+      seller.verificationTokenExpires &&
+      new Date(seller.verificationTokenExpires).getTime() >= Date.now();
+
+    const otpMatches =
+      otp &&
+      seller.verificationOtp === String(otp).trim() &&
+      seller.verificationOtpExpires &&
+      new Date(seller.verificationOtpExpires).getTime() >= Date.now();
+
+    if (!tokenMatches && !otpMatches) {
+      return res.status(400).json({ error: "Invalid or expired verification code" });
+    }
+
+    clearVerificationState(seller, tokenMatches ? "link" : "otp");
+    await seller.save();
+    await sendSellerWelcomeMailOnce(seller);
+
+    res.json({
+      message: "Seller verified successfully",
+      token: createSellerJwt(seller),
+      seller: serializeSeller(seller),
+    });
+  } catch (err) {
+    console.error("Seller Verify Account Error:", err);
+    res.status(500).json({ error: "Verification failed" });
+  }
+}
+
+export async function resendVerification(req, res) {
+  try {
+    const { email } = req.body;
+    const seller = await Seller.findOne({ email: String(email || "").toLowerCase().trim() });
+
+    if (!seller) {
+      return res.status(404).json({ error: "Seller not found" });
+    }
+
+    if (seller.isVerified) {
+      return res.status(400).json({ error: "Seller already verified" });
+    }
+
+    if (isVerificationWindowExpired(seller)) {
+      return res.status(403).json({
+        code: "VERIFICATION_WINDOW_EXPIRED",
+        error: "Verification window expired. Please contact admin.",
+      });
+    }
+
+    await sendVerificationForSeller(seller, { preserveDeadline: true, isReminder: true });
+
+    res.json({
+      message: "Verification email resent successfully",
+      verificationDeadline: seller.verificationDeadline,
+    });
+  } catch (err) {
+    console.error("Seller Resend Verification Error:", err);
+    res.status(500).json({ error: "Failed to resend verification email" });
+  }
+}
+
 export async function googleSellerAuth(req, res) {
   try {
-    console.log("Google Seller Login REQ BODY:", req.body);
     const tokenId = req.body.tokenId || req.body.credential;
-    if (!tokenId) return res.status(400).json({ error: "No token provided" });
+    if (!tokenId || !googleClient) {
+      return res.status(400).json({ error: "Google login is not configured" });
+    }
 
-    const client = new OAuth2Client(GOOGLE_CLIENT_ID);
-    const ticket = await client.verifyIdToken({
+    const ticket = await googleClient.verifyIdToken({
       idToken: tokenId,
       audience: GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
     const { email, name, picture } = payload;
 
-    if (!email) return res.status(400).json({ error: "Google account missing email" });
-
-    // If seller doesn't exist, auto-create
-    let seller = await Seller.findOne({ email });
-    if (!seller) {
-      let username = generateUsername(name || "seller");
-      let taken = await Seller.findOne({ username });
-      while (taken) {
-        username = "seller-" + Math.floor(1000 + Math.random() * 9000);
-        taken = await Seller.findOne({ username });
-      }
-
-      seller = await Seller.create({
-        fullName: name,
-        username,
-        email,
-        bio: "",
-        shopName: "",
-        address: "",
-        phone: "",
-        avatar: picture || "",
-      });
-
-      // ✅ Send Welcome Email (only for new sellers)
-      try {
-        await sendSellerWelcomeMail(email, name);
-        console.log(`✅ Seller welcome email sent (Google) to ${email}`);
-      } catch (mailError) {
-        console.error("⚠️ Failed to send Google seller welcome email:", mailError.message);
-      }
+    if (!email) {
+      return res.status(400).json({ error: "Google account missing email" });
     }
 
-    const token = createJwt(seller);
+    const normalizedEmail = String(email).toLowerCase().trim();
+    let seller = await Seller.findOne({ email: normalizedEmail });
+    let shouldSendWelcome = false;
+
+    if (!seller) {
+      seller = await Seller.create({
+        fullName: name || normalizedEmail.split("@")[0],
+        username: await createUniqueUsername(name || "seller"),
+        email: normalizedEmail,
+        phone: "",
+        shopName: "",
+        address: "",
+        bio: "",
+        avatar: picture || "",
+        authProvider: "google",
+        isVerified: true,
+        verifiedAt: new Date(),
+        verificationSource: "google",
+      });
+      shouldSendWelcome = true;
+    } else if (!seller.isVerified) {
+      clearVerificationState(seller, "google");
+      if (!seller.avatar && picture) {
+        seller.avatar = picture;
+      }
+      await seller.save();
+      shouldSendWelcome = true;
+    }
+
+    if (shouldSendWelcome) {
+      await sendSellerWelcomeMailOnce(seller);
+    }
+
+    const token = createSellerJwt(seller);
 
     res.json({
       token,
-      seller: {
-        _id: seller._id,
-        fullName: seller.fullName,
-        username: seller.username,
-        email: seller.email,
-        shopName: seller.shopName,
-        bio: seller.bio,
-        address: seller.address,
-        phone: seller.phone,
-        avatar: seller.avatar,
-      },
+      seller: serializeSeller(seller),
     });
   } catch (err) {
-    console.error("❌ Google Seller Auth Error:", err);
+    console.error("Google Seller Auth Error:", err);
     res.status(400).json({ error: "Google login failed" });
   }
 }
 
-// 📩 REQUEST PASSWORD RESET (Send OTP)
 export async function requestPasswordReset(req, res) {
   try {
     const { email } = req.body;
-    const seller = await Seller.findOne({ email });
+    const seller = await Seller.findOne({ email: String(email || "").toLowerCase().trim() });
     if (!seller) return res.status(404).json({ error: "Seller not found" });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiry = Date.now() + 15 * 60 * 1000; // 15 mins
+    const otpExpiry = Date.now() + 15 * 60 * 1000;
 
     seller.otp = otp;
     seller.otpExpiry = otpExpiry;
     await seller.save();
 
-    await sendSellerOtpMail({ to: email, otp });
+    await sendSellerOtpMail({ to: seller.email, otp });
     res.json({ message: "OTP sent to email" });
   } catch (err) {
-    console.error("❌ OTP Send Error:", err);
+    console.error("OTP Send Error:", err);
     res.status(500).json({ error: "Failed to send OTP email" });
   }
 }
 
-// 🔄 RESET PASSWORD WITH OTP
 export async function resetPasswordWithOtp(req, res) {
   try {
     const { email, otp, newPassword } = req.body;
-    const seller = await Seller.findOne({ email });
+    const seller = await Seller.findOne({ email: String(email || "").toLowerCase().trim() });
     if (!seller) return res.status(404).json({ error: "Seller not found" });
     if (!seller.otp || seller.otp !== otp) return res.status(400).json({ error: "Invalid OTP" });
     if (seller.otpExpiry < Date.now()) return res.status(400).json({ error: "OTP expired" });
@@ -216,23 +352,22 @@ export async function resetPasswordWithOtp(req, res) {
     await seller.save();
     res.json({ message: "Password reset successful" });
   } catch (err) {
-    console.error("❌ Password Reset Error:", err);
+    console.error("Password Reset Error:", err);
     res.status(500).json({ error: "Password reset failed" });
   }
 }
 
-// 🔎 VERIFY OTP ONLY
 export async function verifyOtp(req, res) {
   try {
     const { email, otp } = req.body;
-    const seller = await Seller.findOne({ email });
+    const seller = await Seller.findOne({ email: String(email || "").toLowerCase().trim() });
     if (!seller) return res.status(404).json({ error: "Seller not found" });
     if (!seller.otp || seller.otp !== otp) return res.status(400).json({ error: "Invalid OTP" });
     if (seller.otpExpiry < Date.now()) return res.status(400).json({ error: "OTP expired" });
 
     res.json({ message: "OTP verified" });
   } catch (err) {
-    console.error("❌ OTP Verification Error:", err);
+    console.error("OTP Verification Error:", err);
     res.status(500).json({ error: "OTP verification failed" });
   }
 }

@@ -1,6 +1,51 @@
-import Order from "../models/Order.js";
-import Cart from "../models/Cart.js";
 import { v4 as uuidv4 } from "uuid";
+import Cart from "../models/Cart.js";
+import Order from "../models/Order.js";
+import Product from "../models/product.js";
+import Seller from "../models/Seller.js";
+import { sendSellerOrderMail } from "../utils/sellerOrderMail.js";
+
+const hydrateCartItems = async (items = []) => {
+  const productIds = items.map((item) => item.id).filter(Boolean);
+  const products = await Product.find({ _id: { $in: productIds } }).select("sellerId name image images");
+  const byId = new Map(products.map((product) => [String(product._id), product]));
+
+  return items.map((item) => {
+    const product = byId.get(String(item.id));
+    const fallbackImage = product?.images?.[0] || product?.image || item.image || item.selectedColorImage || "";
+    return {
+      id: item.id,
+      sellerId: item.sellerId || (product?.sellerId ? String(product.sellerId) : ""),
+      name: item.name || product?.name || "",
+      price: Number(item.price || 0),
+      image: fallbackImage,
+      qty: Number(item.qty || 1),
+      selectedSize: item.selectedSize || "",
+      selectedColor: item.selectedColor || "",
+      selectedColorImage: item.selectedColorImage || "",
+      status: item.status || "Pending",
+    };
+  });
+};
+
+const notifySellersForOrder = async (order) => {
+  const grouped = order.items.reduce((acc, item) => {
+    if (!item.sellerId) return acc;
+    if (!acc[item.sellerId]) acc[item.sellerId] = [];
+    acc[item.sellerId].push(item);
+    return acc;
+  }, {});
+
+  for (const [sellerId, items] of Object.entries(grouped)) {
+    try {
+      const seller = await Seller.findById(sellerId);
+      if (!seller) continue;
+      await sendSellerOrderMail({ seller, order, items });
+    } catch (error) {
+      console.error(`Failed to send seller order email for seller ${sellerId}:`, error.message);
+    }
+  }
+};
 
 export const createOrder = async (req, res) => {
   try {
@@ -9,30 +54,36 @@ export const createOrder = async (req, res) => {
     if (!cart || !cart.items || cart.items.length === 0) {
       return res.status(400).json({ message: "Cart is empty, cannot create order" });
     }
-    const {
-      name, mobile, address, instructions,
-      paymentMethod, paymentStatus, totalAmount,
-    } = req.body;
+
+    const { name, mobile, address, instructions, paymentMethod, paymentStatus, totalAmount } = req.body;
     if (!name || !mobile || !address || !paymentMethod || !paymentStatus || !totalAmount) {
       return res.status(400).json({ message: "Missing order details" });
     }
+
+    const orderItems = await hydrateCartItems(cart.items);
     const orderId = uuidv4();
     const newOrder = new Order({
       orderId,
       userId,
-      items: cart.items,
+      items: orderItems,
       orderStatus: paymentStatus === "Successful" ? "Placed" : "Pending",
       paymentMethod,
       paymentStatus,
-      totalAmount,
-      name, mobile, address, instructions,
+      totalAmount: Number(totalAmount),
+      name,
+      mobile,
+      address,
+      instructions,
     });
+
     await newOrder.save();
     cart.items = [];
     await cart.save();
+    await notifySellersForOrder(newOrder);
+
     res.status(201).json({ message: "Order created successfully", order: newOrder });
   } catch (error) {
-    console.error('ORDER CREATE ERROR:', error);
+    console.error("ORDER CREATE ERROR:", error);
     res.status(500).json({ message: "Server error creating order", errorMessage: error.message });
   }
 };
