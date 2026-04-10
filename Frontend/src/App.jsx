@@ -35,7 +35,7 @@ import ResetPasswordOTP from './Pages/ResetPasswordOTP.jsx'; // ✅
 import ResetPasswordConfirm from './Pages/ResetPasswordConfirm.jsx'; // ✅
 import Ai from './Components/Ai.jsx'; // ✅
 import Search from "./Pages/Search.jsx";
-
+import verifyAccount from "./Pages/verifyAccount.jsx"; // ✅
 
 // ==== SELLER CONTEXT & PAGES ====
 import SellerLogin from "./seller/pages/SellerLogin.jsx"; // ✅
@@ -123,7 +123,7 @@ function App() {
                 <Route path="/under-construction" element={<UnderConstruction />} />
                 <Route path="/product/:id" element={<SingleProduct />} />
                 <Route path="/search" element={<Search />} />
-
+                <Route path="/verify-account" element={<verifyAccount />} />
 
                 {/* SELLER ROUTES */}
                 <Route path="/sellerlogin" element={<SellerLogin />} />
