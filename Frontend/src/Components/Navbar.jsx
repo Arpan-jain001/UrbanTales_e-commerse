@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   ShoppingCart,
   Bell,
+  Heart,
   User as UserIcon,
   Search as SearchIcon,
   LogOut,
@@ -11,9 +12,11 @@ import {
   Menu,
   X,
   ChevronRight,
+  PackageOpen,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import urbanTalesLogo from "../assets/UrbanTales.png";
+import { clearUserAuth, getStoredUser, getStoredUserToken } from "../utils/authStorage";
 
 const BASE_API_URL =
   import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
@@ -99,6 +102,13 @@ function ProfileMenu({ user, onLogin, onLogout }) {
                 onClick={() => setOpen(false)}
               >
                 <PackageSearch className="w-4 h-4" /> Orders
+              </Link>
+              <Link
+                to="/wishlist"
+                className="flex items-center gap-2 w-full px-3 py-2 hover:bg-gray-100 rounded-md transition"
+                onClick={() => setOpen(false)}
+              >
+                <Heart className="w-4 h-4" /> Wishlist
               </Link>
               <button
                 type="button"
@@ -677,8 +687,8 @@ const Navbar = ({ cartCount, onSearch, notificationCount }) => {
   // user load
   useEffect(() => {
     try {
-      const storedUser = JSON.parse(localStorage.getItem("user"));
-      const token = localStorage.getItem("token");
+      const storedUser = getStoredUser();
+      const token = getStoredUserToken();
       if (storedUser && token) setUser(storedUser);
     } catch {
       // ignore
@@ -692,7 +702,7 @@ const Navbar = ({ cartCount, onSearch, notificationCount }) => {
       return;
     }
 
-    const token = localStorage.getItem("token");
+    const token = getStoredUserToken();
     if (!token) return;
 
     const fetchCount = async () => {
@@ -717,8 +727,7 @@ const Navbar = ({ cartCount, onSearch, notificationCount }) => {
 
   const handleLogin = () => navigate("/login");
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearUserAuth();
     setUser(null);
     navigate("/");
   };
@@ -895,6 +904,16 @@ const Navbar = ({ cartCount, onSearch, notificationCount }) => {
                     <PackageSearch className="w-5 h-5 text-gray-600" />
                     <span className="font-medium text-gray-700">
                       My Orders
+                    </span>
+                  </Link>
+                  <Link
+                    to="/wishlist"
+                    onClick={() => setSidebarOpen(false)}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition"
+                  >
+                    <Heart className="w-5 h-5 text-gray-600" />
+                    <span className="font-medium text-gray-700">
+                      Wishlist
                     </span>
                   </Link>
                   <Link

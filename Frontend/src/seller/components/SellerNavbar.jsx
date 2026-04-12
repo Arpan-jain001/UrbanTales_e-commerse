@@ -26,6 +26,7 @@ const NAV = [
   { label: "Products", href: "/seller/products" },
   { label: "Add Product", href: "/seller/add-product" },
   { label: "Orders", href: "/seller/orders" },
+  { label: "Stock Requests", href: "/seller/stock-requests" },
   { label: "Earnings", href: "/seller/earnings" },
   { label: "Profile", href: "/seller/profile" },
 ];

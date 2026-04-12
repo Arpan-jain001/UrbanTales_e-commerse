@@ -3,9 +3,11 @@ import Navbar from "../Components/Navbar";
 import Footer from "../Components/Footer";
 import { HashLoader } from "react-spinners";
 import { useNavigate } from "react-router-dom";
+import { getStoredUserToken } from "../utils/authStorage";
 
 const deliveryCharge = 50;
 const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
+const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
 
 // Valid UPI VPA handles
 const VALID_UPI_HANDLES = [
@@ -32,19 +34,26 @@ const VALID_UPI_HANDLES = [
 
 export default function SecureCheckout() {
   const navigate = useNavigate();
-  const token = localStorage.getItem("token");
+  const token = getStoredUserToken();
   const [selectedPayment, setSelectedPayment] = useState("");
   const [couponCode, setCouponCode] = useState("");
+  const [giftCode, setGiftCode] = useState("");
   const [discount, setDiscount] = useState(0);
+  const [appliedCode, setAppliedCode] = useState("");
+  const [couponMessage, setCouponMessage] = useState("");
   const [upiId, setUpiId] = useState('');
   const [isUpiVerified, setIsUpiVerified] = useState(false);
   const [upiError, setUpiError] = useState('');
   const [instructions, setInstructions] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [subtotal, setSubtotal] = useState(0);
   const [cartItemCount, setCartItemCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [wallet, setWallet] = useState(null);
+  const [useGiftBalance, setUseGiftBalance] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRazorpayLoaded, setIsRazorpayLoaded] = useState(() => Boolean(window.Razorpay));
   const [isEditingAddress, setIsEditingAddress] = useState(false);
-  const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [userInfo, setUserInfo] = useState({
     name: "",
     mobile: "",
@@ -60,30 +69,81 @@ export default function SecureCheckout() {
       navigate("/login", { replace: true });
       return;
     }
-    fetch(`${BASE_API_URL}/api/cart`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch cart");
-        return res.json();
-      })
-      .then((data) => {
-        setSubtotal(data.subtotal || 0);
-        setCartItemCount(data.items?.length || 0);
+    Promise.all([
+      fetch(`${BASE_API_URL}/api/cart`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+      fetch(`${BASE_API_URL}/api/gift-cards/wallet`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+      fetch(`${BASE_API_URL}/api/users/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+    ])
+      .then(async ([cartRes, walletRes, userRes]) => {
+        if (!cartRes.ok) throw new Error("Failed to fetch cart");
+        const cartData = await cartRes.json();
+        const walletData = walletRes.ok ? await walletRes.json() : { wallet: null };
+        const userData = userRes.ok ? await userRes.json() : {};
+
+        setSubtotal(cartData.subtotal || 0);
+        setCartItemCount(cartData.items?.length || 0);
+        setWallet(walletData.wallet || null);
+
+        const saved = JSON.parse(localStorage.getItem('checkoutUserInfo'));
+        if (saved) {
+          setUserInfo(saved);
+        } else {
+          const firstAddress = userData?.user?.address?.[0] || userData?.address?.[0];
+          const profile = userData?.user || userData;
+          if (profile) {
+            setUserEmail(profile.email || "");
+            setUserInfo((prev) => ({
+              ...prev,
+              name: profile.fullName || prev.name,
+              mobile: profile.phone || prev.mobile,
+              address: firstAddress?.street || prev.address,
+              city: firstAddress?.city || prev.city,
+              pincode: firstAddress?.pincode || prev.pincode,
+              state: prev.state,
+            }));
+          }
+        }
         setLoading(false);
       })
       .catch(() => {
         setLoading(false);
-        alert("Failed to load cart. Please try again.");
+        alert("Failed to load checkout data. Please try again.");
       });
-    
-    const saved = JSON.parse(localStorage.getItem('checkoutUserInfo'));
-    if (saved) setUserInfo(saved);
   }, [token, navigate]);
 
   useEffect(() => {
     localStorage.setItem('checkoutUserInfo', JSON.stringify(userInfo));
   }, [userInfo]);
+
+  useEffect(() => {
+    if (window.Razorpay) {
+      setIsRazorpayLoaded(true);
+      return undefined;
+    }
+
+    const existingScript = document.querySelector('script[data-razorpay-checkout="true"]');
+    if (existingScript) {
+      const handleLoad = () => setIsRazorpayLoaded(true);
+      existingScript.addEventListener("load", handleLoad);
+      return () => existingScript.removeEventListener("load", handleLoad);
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.dataset.razorpayCheckout = "true";
+    script.onload = () => setIsRazorpayLoaded(true);
+    script.onerror = () => setIsRazorpayLoaded(false);
+    document.body.appendChild(script);
+
+    return undefined;
+  }, []);
 
   // UPI ID Validation Function
   const validateUpiId = (upiString) => {
@@ -143,28 +203,37 @@ export default function SecureCheckout() {
     }
   };
 
-  const saveOrderToDB = async (paymentStatus) => {
+  const saveOrderToDB = async ({ paymentMethod, paymentStatus, paymentDetails = null }) => {
     if (cartItemCount === 0) {
       alert("Your cart is empty. Add products before checkout.");
       throw new Error("Empty cart");
     }
 
-    const discountedTotal = subtotal + deliveryCharge - discount;
+    const discountedTotal = Math.max(
+      0,
+      subtotal + deliveryCharge - discount - walletAppliedAmount
+    );
     const orderPayload = {
       name: userInfo.name,
       mobile: userInfo.mobile,
       address: `${userInfo.address}, ${userInfo.city}, ${userInfo.state} - ${userInfo.pincode}`,
       instructions,
-      paymentMethod: selectedPayment,
+      paymentMethod: discountedTotal <= 0 ? "gift-card" : paymentMethod,
       paymentStatus,
+      subtotal,
+      deliveryCharge,
+      giftCode: appliedCode || "",
+      discountAmount: discount,
+      useGiftBalance,
       totalAmount: discountedTotal.toFixed(2),
+      paymentDetails,
     };
 
     try {
       const res = await fetch(`${BASE_API_URL}/api/orders`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(orderPayload),
@@ -174,37 +243,59 @@ export default function SecureCheckout() {
         alert("Failed to save order: " + (errorData.message || "Unknown error"));
         throw new Error(errorData.message || "Order save failed");
       }
-      await res.json();
+      const data = await res.json();
+      return data.order || data;
     } catch (err) {
       throw err;
     }
   };
 
-  const handlePaymentSuccess = async (status) => {
+  const handlePaymentSuccess = async ({ paymentMethod, paymentStatus, paymentDetails = null }) => {
     try {
-      await saveOrderToDB(status);
+      const order = await saveOrderToDB({ paymentMethod, paymentStatus, paymentDetails });
       await clearUserCart();
-      saveOrderDetailsAndNavigate(status);
+      saveOrderDetailsAndNavigate(paymentStatus, order);
     } catch (err) {
       console.error("Payment success handling error:", err);
+      throw err;
     }
   };
 
-  const applyCoupon = () => {
+  const applyCoupon = async () => {
     const code = couponCode.trim().toUpperCase();
+    if (!code) {
+      setCouponMessage("Please enter a coupon or gift card code.");
+      setAppliedCode("");
+      return;
+    }
 
-    if (code === "URBANTALES" || code === "AJ001") {
-      if (appliedCoupon === code) {
-        alert("😄 Hey, you already used this coupon! Trying hard, aren't you?");
-      } else {
-        setDiscount((subtotal + deliveryCharge) * 0.2);
-        setAppliedCoupon(code);
-        alert("✅ Coupon Applied: 20% discount");
+    try {
+      const res = await fetch(`${BASE_API_URL}/api/gift-cards/validate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ code, subtotal, deliveryCharge }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.valid) {
+        setDiscount(0);
+        setAppliedCode("");
+        setCouponMessage(data.message || "Invalid coupon or gift card code.");
+        return;
       }
-    } else {
+
+      setDiscount(data.discountAmount || 0);
+      setAppliedCode(data.code);
+      setGiftCode(data.code);
+      setCouponMessage(`✅ ${data.message || "Coupon applied"}`);
+    } catch (err) {
+      console.error("Coupon validation failed:", err);
       setDiscount(0);
-      alert("❌ Invalid Coupon");
-      setAppliedCoupon(null);
+      setAppliedCode("");
+      setCouponMessage("Unable to validate coupon at this time.");
     }
   };
 
@@ -216,22 +307,26 @@ export default function SecureCheckout() {
     userInfo.pincode &&
     userInfo.state;
 
+  const walletBalance = Number(wallet?.balance || 0);
+  const walletAppliedAmount = useGiftBalance ? Math.min(walletBalance, subtotal + deliveryCharge - discount) : 0;
+  const discountedTotal = Math.max(0, subtotal + deliveryCharge - discount - walletAppliedAmount);
+  const walletPreviewEntries = (wallet?.entries || []).slice(0, 3);
   const isPayButtonEnabled =
-    selectedPayment &&
+    (discountedTotal <= 0 || selectedPayment) &&
     (selectedPayment !== "upi" || (upiId.trim() && isUpiVerified)) &&
     isAddressComplete &&
     !isEditingAddress;
 
-  const discountedTotal = subtotal + deliveryCharge - discount;
-
-  const saveOrderDetailsAndNavigate = (paymentStatus) => {
+  const saveOrderDetailsAndNavigate = (paymentStatus, order = {}) => {
+    const resolvedPaymentMethod =
+      discountedTotal <= 0 ? "gift-card" : selectedPayment;
     const orderDetails = {
-      orderId: `ORD-${Date.now()}`,
+      orderId: order.orderId || `ORD-${Date.now()}`,
       name: userInfo.name,
       mobile: userInfo.mobile,
       address: `${userInfo.address}, ${userInfo.city}, ${userInfo.state} - ${userInfo.pincode}`,
       totalAmount: discountedTotal.toFixed(2),
-      paymentMethod: selectedPayment,
+      paymentMethod: resolvedPaymentMethod,
       paymentStatus,
       instructions,
       orderDate: new Date().toLocaleString(),
@@ -241,25 +336,66 @@ export default function SecureCheckout() {
   };
 
   const handleRazorpayPayment = async () => {
+    if (isSubmitting) return;
+
     if (!isAddressComplete) {
       alert("Please fill in all address details before proceeding with payment.");
       setIsEditingAddress(true);
       return;
     }
 
+    setIsSubmitting(true);
+
+    if (discountedTotal <= 0) {
+      try {
+        await handlePaymentSuccess({
+          paymentMethod: "gift-card",
+          paymentStatus: "Successful",
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     // COD
     if (selectedPayment === "cod") {
       alert("✅ Cash on Delivery selected! Your order will be confirmed.");
-      await handlePaymentSuccess("Pending");
+      try {
+        await handlePaymentSuccess({
+          paymentMethod: "cod",
+          paymentStatus: "Pending",
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
       return;
     }
 
     try {
-      const totalAmountInPaise = Math.round(discountedTotal * 100);
+      if (!RAZORPAY_KEY_ID && !["cod"].includes(selectedPayment) && discountedTotal > 0) {
+        alert("Payment gateway is not configured. Please set the Razorpay key in environment.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!isRazorpayLoaded || !window.Razorpay) {
+        alert("Payment gateway is still loading. Please try again in a moment.");
+        setIsSubmitting(false);
+        return;
+      }
+
       const res = await fetch(`${BASE_API_URL}/api/razorpay/order`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: totalAmountInPaise }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          giftCode: appliedCode || "",
+          useGiftBalance,
+          deliveryCharge,
+        }),
       });
       
       if (!res.ok) {
@@ -270,7 +406,7 @@ export default function SecureCheckout() {
       const orderData = await res.json();
       
       const options = {
-        key: "rzp_test_QMG1XV6hszJZlA",
+        key: RAZORPAY_KEY_ID,
         amount: orderData.amount,
         currency: orderData.currency,
         name: "UrbanTales",
@@ -278,11 +414,15 @@ export default function SecureCheckout() {
         order_id: orderData.id,
         handler: async (response) => {
           alert("✅ Payment successful! Your order has been placed.");
-          await handlePaymentSuccess("Successful");
+          await handlePaymentSuccess({
+            paymentMethod: selectedPayment,
+            paymentStatus: "Successful",
+            paymentDetails: response,
+          });
         },
         prefill: {
           name: userInfo.name,
-          email: "customer@example.com",
+          email: userEmail,
           contact: userInfo.mobile,
           ...(selectedPayment === "upi" && isUpiVerified && upiId.trim() && {
             method: "upi",
@@ -438,16 +578,21 @@ export default function SecureCheckout() {
                     <span>🎫</span>
                     Apply Coupon Code
                   </label>
-                  <div className="flex mt-2 space-x-2">
+                  <div className="flex mt-2 space-x-2 flex-wrap">
                     <input
                       id="couponInput"
                       type="text"
                       value={couponCode}
-                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                      onChange={(e) => {
+                        setCouponCode(e.target.value.toUpperCase());
+                        setCouponMessage("");
+                        setAppliedCode("");
+                      }}
                       className="border-2 border-gray-300 rounded-xl px-4 py-2 w-1/2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 font-medium transition"
                       placeholder="e.g., URBANTALES"
                     />
                     <button
+                      type="button"
                       onClick={applyCoupon}
                       disabled={couponCode.trim() === ""}
                       className={`px-6 py-2 rounded-xl text-sm font-bold transition-all duration-200 ${
@@ -458,12 +603,15 @@ export default function SecureCheckout() {
                     >
                       Apply
                     </button>
-                    {appliedCoupon && (
+                    {appliedCode && (
                       <button
+                        type="button"
                         onClick={() => {
                           setCouponCode("");
                           setDiscount(0);
-                          setAppliedCoupon(null);
+                          setAppliedCode("");
+                          setGiftCode("");
+                          setCouponMessage("");
                           alert("🗑️ Coupon removed");
                         }}
                         className="px-4 py-2 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-700 text-white cursor-pointer transition shadow-md hover:shadow-lg"
@@ -472,11 +620,62 @@ export default function SecureCheckout() {
                       </button>
                     )}
                   </div>
-                  {appliedCoupon && (
-                    <p className="text-green-600 text-sm mt-2 font-semibold">
-                      ✅ Coupon "{appliedCoupon}" applied! You saved ₹{discount.toFixed(2)}
+                  {couponMessage && (
+                    <p className={`${appliedCode ? "text-green-600" : "text-red-600"} text-sm mt-2 font-semibold`}>
+                      {couponMessage}
                     </p>
                   )}
+                  {appliedCode && !couponMessage && (
+                    <p className="text-green-600 text-sm mt-2 font-semibold">
+                      ✅ Coupon "{appliedCode}" applied! You saved ₹{discount.toFixed(2)}
+                    </p>
+                  )}
+                </div>
+
+                <div className="mb-6 bg-gradient-to-r from-amber-50 to-yellow-50 p-4 rounded-xl border-2 border-amber-200">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <label className="font-bold text-[#070A52] flex items-center gap-2">
+                        <span>🎁</span>
+                        Use Gift Card Balance
+                      </label>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Available balance: <span className="font-semibold text-amber-700">₹{walletBalance.toFixed(2)}</span>
+                      </p>
+                      {wallet?.soonestExpiry && walletBalance > 0 ? (
+                        <p className="text-xs text-amber-700 mt-1">
+                          Earliest expiry: {new Date(wallet.soonestExpiry).toLocaleDateString("en-IN")}
+                        </p>
+                      ) : null}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={useGiftBalance}
+                      onChange={(e) => setUseGiftBalance(e.target.checked)}
+                      disabled={walletBalance <= 0}
+                      className="h-5 w-5 mt-1"
+                    />
+                  </div>
+                  {useGiftBalance && walletAppliedAmount > 0 ? (
+                    <p className="text-sm text-green-700 font-semibold mt-3">
+                      ₹{walletAppliedAmount.toFixed(2)} will be used from your gift card wallet.
+                    </p>
+                  ) : null}
+                  {walletPreviewEntries.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      {walletPreviewEntries.map((entry) => (
+                        <div key={entry.id} className="rounded-lg border border-amber-100 bg-white/85 px-3 py-2 text-xs text-slate-600">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-semibold text-slate-700">{String(entry.source || "").replace(/_/g, " ")}</span>
+                            <span>₹{Number(entry.remainingAmount || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-amber-700">
+                            Expires: {entry.expiresAt ? new Date(entry.expiresAt).toLocaleDateString("en-IN") : "N/A"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <fieldset className="border-2 border-gray-300 rounded-xl p-5 space-y-4">
@@ -622,7 +821,7 @@ export default function SecureCheckout() {
                 disabled={!isPayButtonEnabled}
                 onClick={handleRazorpayPayment}
               >
-                {isPayButtonEnabled ? `🔒 Pay ₹${discountedTotal.toFixed(2)}` : "⚠️ Complete Details"}
+                {isPayButtonEnabled ? (discountedTotal <= 0 ? "✅ Place Order" : `🔒 Pay ₹${discountedTotal.toFixed(2)}`) : "⚠️ Complete Details"}
               </button>
               
               <h3 className="font-bold text-[#070A52] mb-4 border-b-2 pb-3 text-lg">
@@ -644,6 +843,18 @@ export default function SecureCheckout() {
                     <span className="font-bold">- ₹{discount.toFixed(2)}</span>
                   </li>
                 )}
+                {walletAppliedAmount > 0 && (
+                  <li className="flex justify-between items-center text-amber-700">
+                    <span className="font-medium">🎁 Gift Card Used:</span>
+                    <span className="font-bold">- ₹{walletAppliedAmount.toFixed(2)}</span>
+                  </li>
+                )}
+                {discountedTotal <= 0 && (
+                  <li className="flex justify-between items-center text-emerald-700">
+                    <span className="font-medium">No extra payment:</span>
+                    <span className="font-bold">Covered by gift wallet</span>
+                  </li>
+                )}
                 <hr className="my-3 border-gray-300" />
                 <li className="flex justify-between items-center font-bold text-lg mt-3 bg-gradient-to-r from-purple-50 to-indigo-50 p-3 rounded-xl">
                   <span className="text-[#070A52]">Order Total:</span>
@@ -652,10 +863,11 @@ export default function SecureCheckout() {
               </ul>
 
               {/* Payment Method Display */}
-              {selectedPayment && (
+              {(selectedPayment || discountedTotal <= 0) && (
                 <div className="mt-4 bg-blue-50 p-3 rounded-xl border border-blue-200">
                   <p className="text-xs text-gray-600 font-medium mb-1">Selected Payment:</p>
                   <p className="text-sm font-bold text-[#070A52]">
+                    {discountedTotal <= 0 && "🎁 Gift Card Wallet"}
                     {selectedPayment === "card" && "💳 Credit/Debit Card"}
                     {selectedPayment === "netbanking" && "🏦 Net Banking"}
                     {selectedPayment === "upi" && "📱 UPI"}

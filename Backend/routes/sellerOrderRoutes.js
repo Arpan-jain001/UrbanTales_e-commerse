@@ -3,6 +3,7 @@ import sellerAuth from "../middlewares/sellerAuth.js";
 import {
   listSellerOrders,
   updateOrderItemStatus,
+  updateOrderReturnStatus,
   salesChart
 } from "../controllers/sellerOrderController.js";
 
@@ -13,6 +14,7 @@ router.get("/", sellerAuth, listSellerOrders);
 
 // Seller can update status for only their items in a specific order
 router.put("/:orderId/item/:itemId/status", sellerAuth, updateOrderItemStatus);
+router.put("/:orderId/return-status", sellerAuth, updateOrderReturnStatus);
 
 // Seller dashboard analytics (earnings/sold per month)
 router.get("/analytics/salesChart", sellerAuth, salesChart);

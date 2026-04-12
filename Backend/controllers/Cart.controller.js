@@ -1,4 +1,5 @@
 import Cart from "../models/Cart.js";
+import Product from "../models/product.js";
 
 const buildCartItemKey = (item) =>
   [item.id, item.selectedSize || "", item.selectedColor || ""].join("::");
@@ -18,6 +19,14 @@ export const getCart = async (req, res) => {
 export const addToCart = async (req, res) => {
   const { item } = req.body;
   try {
+    const product = await Product.findById(item.id).select("stock");
+    if (!product) {
+      return res.status(404).json({ msg: "Product not found" });
+    }
+    if (Number(product.stock || 0) <= 0) {
+      return res.status(400).json({ msg: "Cannot add out-of-stock product to cart" });
+    }
+
     const normalizedItem = {
       id: item.id,
       sellerId: item.sellerId || "",
@@ -36,7 +45,13 @@ export const addToCart = async (req, res) => {
     } else {
       const key = buildCartItemKey(normalizedItem);
       const existingItem = cart.items.find((cartItem) => buildCartItemKey(cartItem) === key);
-      if (existingItem) existingItem.qty += normalizedItem.qty;
+      if (existingItem) {
+        const requestedQty = Number(existingItem.qty || 0) + normalizedItem.qty;
+        if (requestedQty > Number(product.stock || 0)) {
+          return res.status(400).json({ msg: `Only ${product.stock} item(s) are available in stock` });
+        }
+        existingItem.qty = requestedQty;
+      }
       else cart.items.push(normalizedItem);
     }
     await cart.save();
@@ -81,6 +96,11 @@ export const updateQtyInCart = async (req, res) => {
         String(cartItem.selectedColor || "") === String(selectedColor || "")
     );
     if (!item) return res.status(404).json({ msg: "Item not found" });
+    const product = await Product.findById(itemId).select("stock");
+    if (!product) return res.status(404).json({ msg: "Product not found" });
+    if (Number(qty) > Number(product.stock || 0)) {
+      return res.status(400).json({ msg: `Only ${product.stock} item(s) are available in stock` });
+    }
     item.qty = Number(qty);
     await cart.save();
     const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);

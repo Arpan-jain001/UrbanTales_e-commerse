@@ -1,19 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import axios from "axios";
+import { clearAuthSession, getAuthToken, getAuthUser, saveAuthSession } from "../../utils/authSession";
 
 const API_BASE = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 const SellerAuthContext = createContext();
 
 export function SellerAuthProvider({ children }) {
-  const [seller, setSeller] = useState(() => {
-    try {
-      const raw = localStorage.getItem("sellerUser");
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [token, setToken] = useState(localStorage.getItem("sellerToken") || "");
+  const [seller, setSeller] = useState(() => getAuthUser("seller"));
+  const [token, setToken] = useState(() => getAuthToken("seller"));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,21 +23,27 @@ export function SellerAuthProvider({ children }) {
       })
       .then(({ data }) => {
         setSeller(data);
-        localStorage.setItem("sellerUser", JSON.stringify(data));
+        saveAuthSession("seller", {
+          token,
+          user: data,
+          remember: Boolean(localStorage.getItem("sellerToken")),
+        });
       })
       .catch(() => {
         setSeller(null);
         setToken("");
-        localStorage.removeItem("sellerToken");
-        localStorage.removeItem("sellerUser");
+        clearAuthSession("seller");
       })
       .finally(() => setLoading(false));
   }, [token]);
 
-  const login = (authToken, sellerData) => {
-    localStorage.setItem("sellerToken", authToken);
+  const login = (authToken, sellerData, options = {}) => {
     if (sellerData) {
-      localStorage.setItem("sellerUser", JSON.stringify(sellerData));
+      saveAuthSession("seller", {
+        token: authToken,
+        user: sellerData,
+        remember: options.remember !== false,
+      });
       setSeller(sellerData);
     }
     setToken(authToken);
@@ -54,15 +54,18 @@ export function SellerAuthProvider({ children }) {
       headers: { Authorization: `Bearer ${token}` },
     });
     setSeller(data);
-    localStorage.setItem("sellerUser", JSON.stringify(data));
+    saveAuthSession("seller", {
+      token,
+      user: data,
+      remember: Boolean(localStorage.getItem("sellerToken")),
+    });
     return data;
   };
 
   const logout = () => {
     setSeller(null);
     setToken("");
-    localStorage.removeItem("sellerToken");
-    localStorage.removeItem("sellerUser");
+    clearAuthSession("seller");
     setLoading(false);
   };
 

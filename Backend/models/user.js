@@ -32,6 +32,7 @@ const userSchema = new mongoose.Schema(
     gender: { type: String, default: "" },
     profileImage: { type: String, default: "" },
     address: { type: [addressSchema], default: [] },
+    wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
 
     isVerified: { type: Boolean, default: false },
     verifiedAt: { type: Date, default: null },
@@ -44,6 +45,7 @@ const userSchema = new mongoose.Schema(
     lastVerificationEmailSentAt: { type: Date, default: null },
     verificationReminderCount: { type: Number, default: 0 },
     welcomeEmailSentAt: { type: Date, default: null },
+    adminUnverifyReason: { type: String, default: "" },
 
     resetOTP: { type: String, default: null },
     resetOTPExpires: { type: Date, default: null },

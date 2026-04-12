@@ -232,7 +232,7 @@ const Login = () => {
         password,
       });
 
-      saveUserAuth(data.token, data.user);
+      saveUserAuth(data.token, data.user, { remember: rememberMe });
       setIsLoading(false);
       await successFlow();
     } catch (err) {
@@ -271,7 +271,7 @@ const Login = () => {
         { token: idToken }
       );
 
-      saveUserAuth(response.data.token, response.data.user);
+      saveUserAuth(response.data.token, response.data.user, { remember: rememberMe });
       setIsLoading(false);
       await successFlow();
     } catch (err) {

@@ -19,18 +19,11 @@ import {
 import { toast, ToastContainer } from "react-toastify";
 import axios from "axios";
 import "react-toastify/dist/ReactToastify.css";
-
-const CATEGORY_LIST = [
-  "fashion",
-  "electronic",
-  "furniture",
-  "kitchen",
-  "toys",
-  "cosmetic",
-  "food",
-  "sports",
-  "appliances",
-];
+import {
+  CATEGORY_OPTIONS,
+  SUBCATEGORY_MAP,
+  getSizeOptionsForProduct,
+} from "../../constants/catalog";
 
 const API_BASE = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
@@ -193,6 +186,7 @@ export default function SellerEditProduct() {
   const [progress, setProgress] = useState(0);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [colorDraft, setColorDraft] = useState({ name: "", image: "" });
 
   const [showAlbum, setShowAlbum] = useState(false);
   const [albumType, setAlbumType] = useState("image");
@@ -209,7 +203,16 @@ export default function SellerEditProduct() {
         const data = res.data;
         const images = data.images || [];
         const videos = data.videos || [];
-        setForm({ ...data, images, videos, delivery: data.delivery || "" });
+        setForm({
+          ...data,
+          images,
+          videos,
+          delivery: data.delivery || "",
+          subCategory: data.subCategory || "",
+          originalPrice: data.originalPrice || "",
+          availableSizes: data.availableSizes || [],
+          availableColors: data.availableColors || [],
+        });
         setMediaOrder(
           data.mediaOrder || [
             ...images.map((u) => ({ type: "image", url: u })),
@@ -224,6 +227,42 @@ export default function SellerEditProduct() {
   }, [id, token]);
 
   const setField = (k, v) => setForm((s) => ({ ...s, [k]: v }));
+  const availableSubCategories = SUBCATEGORY_MAP[form?.category] || [];
+  const availableSizeOptions = getSizeOptionsForProduct(form?.category, form?.subCategory);
+
+  const toggleSize = (size) => {
+    setForm((prev) => {
+      const exists = prev.availableSizes.includes(size);
+      return {
+        ...prev,
+        availableSizes: exists
+          ? prev.availableSizes.filter((item) => item !== size)
+          : [...prev.availableSizes, size],
+      };
+    });
+  };
+
+  const addColorOption = () => {
+    const name = colorDraft.name.trim();
+    const image = colorDraft.image.trim();
+    if (!name) {
+      toast.error("Color name is required.");
+      return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      availableColors: [...(prev.availableColors || []), { name, image }],
+    }));
+    setColorDraft({ name: "", image: "" });
+  };
+
+  const removeColorOption = (index) => {
+    setForm((prev) => ({
+      ...prev,
+      availableColors: prev.availableColors.filter((_, idx) => idx !== index),
+    }));
+  };
 
   // upload helpers
   const uploadFile = async (file) => {
@@ -359,8 +398,11 @@ export default function SellerEditProduct() {
         ...form,
         price: Number(form.price),
         stock: Number(form.stock),
+        originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined,
         image: form.images[0] || merged.find((m) => m.type === "image")?.url || "",
         mediaOrder: merged,
+        availableSizes: form.availableSizes,
+        availableColors: form.availableColors,
       };
 
       await axios.put(`${API_BASE}/api/sellers/products/${id}`, payload, {
@@ -419,12 +461,19 @@ export default function SellerEditProduct() {
                   <select
                     className="w-full p-4 rounded-2xl border-2 bg-white/70 backdrop-blur shadow"
                     value={form.category}
-                    onChange={(e) => setField("category", e.target.value)}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        category: e.target.value,
+                        subCategory: "",
+                        availableSizes: [],
+                      }))
+                    }
                   >
                     <option value="">-- Select Category --</option>
-                    {CATEGORY_LIST.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
+                    {CATEGORY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -449,6 +498,37 @@ export default function SellerEditProduct() {
                   </div>
                 </div>
 
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <select
+                    className="w-full p-4 rounded-2xl border-2 bg-white/70 backdrop-blur shadow disabled:opacity-60"
+                    value={form.subCategory}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        subCategory: e.target.value,
+                        availableSizes: prev.category === "fashion" ? [] : prev.availableSizes,
+                      }))
+                    }
+                    disabled={!availableSubCategories.length}
+                  >
+                    <option value="">-- Select Subcategory --</option>
+                    {availableSubCategories.map((subCategory) => (
+                      <option key={subCategory} value={subCategory}>
+                        {subCategory}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Original Price"
+                    className="p-4 rounded-2xl border-2 bg-white/70 backdrop-blur shadow"
+                    value={form.originalPrice}
+                    onChange={(e) => setField("originalPrice", e.target.value)}
+                  />
+                </div>
+
                 <textarea
                   placeholder="Description"
                   className="w-full p-4 rounded-2xl border-2 bg-white/70 backdrop-blur shadow"
@@ -463,6 +543,107 @@ export default function SellerEditProduct() {
                   value={form.delivery}
                   onChange={(e) => setField("delivery", e.target.value)}
                 />
+
+                <div className="p-4 rounded-2xl border-2 bg-white/70 backdrop-blur shadow space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[#2a0055] mb-3">Available Sizes</p>
+                    <div className="flex flex-wrap gap-2">
+                      {availableSizeOptions.map((size) => {
+                        const selected = form.availableSizes.includes(size);
+                        return (
+                          <button
+                            key={size}
+                            type="button"
+                            onClick={() => toggleSize(size)}
+                            className={`px-3 py-2 rounded-xl border text-sm font-semibold transition ${
+                              selected
+                                ? "bg-[#2a0055] text-white border-[#2a0055]"
+                                : "bg-white/80 text-gray-700 border-gray-200"
+                            }`}
+                          >
+                            {size}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-semibold text-[#2a0055] mb-3">Available Colors</p>
+                    <div className="grid sm:grid-cols-[1fr_1fr_auto] gap-3">
+                      <input
+                        value={colorDraft.name}
+                        onChange={(e) =>
+                          setColorDraft((prev) => ({ ...prev, name: e.target.value }))
+                        }
+                        placeholder="Color name"
+                        className="p-3 rounded-xl border bg-white/80"
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          value={colorDraft.image}
+                          onChange={(e) =>
+                            setColorDraft((prev) => ({ ...prev, image: e.target.value }))
+                          }
+                          placeholder="Color image URL"
+                          className="flex-1 p-3 rounded-xl border bg-white/80"
+                        />
+                        <label className="px-3 py-3 rounded-xl border bg-white/80 cursor-pointer text-sm font-semibold">
+                          Upload
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const image = await uploadFile(file);
+                              if (image) {
+                                setColorDraft((prev) => ({ ...prev, image }));
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addColorOption}
+                        className="px-4 py-3 rounded-xl bg-[#2a0055] text-white font-semibold"
+                      >
+                        Add Color
+                      </button>
+                    </div>
+
+                    {!!form.availableColors?.length && (
+                      <div className="mt-3 flex flex-wrap gap-3">
+                        {form.availableColors.map((color, index) => (
+                          <div
+                            key={`${color.name}-${index}`}
+                            className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-white/80"
+                          >
+                            {color.image ? (
+                              <img
+                                src={color.image}
+                                alt={color.name}
+                                className="w-8 h-8 rounded-full object-cover border"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full border bg-gray-100" />
+                            )}
+                            <span className="text-sm font-medium text-gray-700">{color.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeColorOption(index)}
+                              className="text-red-500"
+                            >
+                              <FaTimes />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 {/* Auto arrange toggle */}
                 <div className="flex items-center justify-between gap-4 pt-2">

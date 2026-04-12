@@ -1,8 +1,20 @@
 import admin from "firebase-admin";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
 
-const serviceAccount = require("../serviceAccount.seller.json");
+function parseServiceAccount(value) {
+  if (!value) {
+    throw new Error(
+      "SELLER_FIREBASE_SERVICE_ACCOUNT_KEY is required. Checked-in seller Firebase key files are no longer used."
+    );
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    throw new Error(`SELLER_FIREBASE_SERVICE_ACCOUNT_KEY must contain valid JSON: ${error.message}`);
+  }
+}
+
+const serviceAccount = parseServiceAccount(process.env.SELLER_FIREBASE_SERVICE_ACCOUNT_KEY);
 
 if (!admin.apps.length) {
   admin.initializeApp({

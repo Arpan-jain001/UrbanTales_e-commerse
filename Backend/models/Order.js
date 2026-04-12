@@ -16,6 +16,15 @@ const orderItemSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const timelineSchema = new mongoose.Schema(
+  {
+    status: { type: String, required: true },
+    note: { type: String, default: "" },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const orderSchema = new mongoose.Schema(
   {
     orderId: { type: String, unique: true, index: true },
@@ -23,19 +32,41 @@ const orderSchema = new mongoose.Schema(
     items: { type: [orderItemSchema], default: [] },
     orderStatus: {
       type: String,
-      enum: ["Placed", "Shipped", "Out for Delivery", "Delivered", "Cancelled", "Returned", "Pending"],
+      enum: [
+        "Placed",
+        "Shipped",
+        "Out for Delivery",
+        "Delivered",
+        "Cancelled",
+        "Returned",
+        "Pending",
+      ],
       default: "Pending",
     },
     paymentMethod: { type: String, default: "" },
     paymentStatus: { type: String, default: "" },
+    paymentGateway: { type: String, default: "" },
+    gatewayOrderId: { type: String, default: "", index: true },
+    gatewayPaymentId: { type: String, default: "", index: true },
+    subtotal: { type: Number, default: 0 },
+    deliveryCharge: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
+    giftCode: { type: String, default: "" },
+    giftType: { type: String, default: "" },
+    giftBalanceUsed: { type: Number, default: 0 },
+    giftBalanceRefunded: { type: Number, default: 0 },
     totalAmount: { type: Number, default: 0 },
     deliveredAt: { type: Date, default: null },
     name: { type: String, default: "" },
     mobile: { type: String, default: "" },
     address: { type: String, default: "" },
     instructions: { type: String, default: "" },
+    trackingInfo: { type: String, default: "" },
+    cancelReason: { type: String, default: "" },
     returnReason: { type: String, default: "" },
     returnStatus: { type: String, default: "" },
+    statusTimeline: { type: [timelineSchema], default: [] },
+    returnTimeline: { type: [timelineSchema], default: [] },
   },
   { timestamps: true }
 );

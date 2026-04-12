@@ -2,6 +2,8 @@
 import express from "express";
 import sellerAuth from "../middlewares/sellerAuth.js";
 import Notification from "../models/Notification.js";
+import Product from "../models/product.js";
+import StockAlert from "../models/StockAlert.js";
 
 const router = express.Router();
 
@@ -32,6 +34,71 @@ router.post("/broadcast", sellerAuth, async (req, res) => {
   } catch (err) {
     console.error("Seller broadcast error:", err);
     res.status(500).json({ message: "Failed to send notification" });
+  }
+});
+
+router.get("/stock-requests", sellerAuth, async (req, res) => {
+  try {
+    const products = await Product.find({ sellerId: req.seller._id }).select(
+      "_id name category subCategory image images stock"
+    );
+    const productIds = products.map((product) => product._id);
+
+    if (!productIds.length) {
+      return res.json({
+        summary: {
+          totalRequests: 0,
+          activeRequests: 0,
+          notifiedRequests: 0,
+          requestedProducts: 0,
+        },
+        requests: [],
+      });
+    }
+
+    const alerts = await StockAlert.find({ productId: { $in: productIds } })
+      .populate("userId", "fullName email phone")
+      .populate("productId", "name category subCategory image images stock")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const requests = alerts
+      .filter((alert) => alert.productId)
+      .map((alert) => ({
+        _id: alert._id,
+        productId: alert.productId._id,
+        productName: alert.productId.name,
+        category: alert.productId.category,
+        subCategory: alert.productId.subCategory,
+        productImage:
+          alert.productId.image || alert.productId.images?.[0] || "",
+        stock: Number(alert.productId.stock || 0),
+        active: Boolean(alert.active),
+        variant: alert.variant || "",
+        requestedAt: alert.createdAt,
+        notifiedAt: alert.notifiedAt,
+        user: {
+          id: alert.userId?._id || null,
+          fullName: alert.userId?.fullName || "",
+          email: alert.userId?.email || "",
+          phone: alert.userId?.phone || "",
+        },
+      }));
+
+    return res.json({
+      summary: {
+        totalRequests: requests.length,
+        activeRequests: requests.filter((item) => item.active).length,
+        notifiedRequests: requests.filter((item) => item.notifiedAt).length,
+        requestedProducts: new Set(
+          requests.map((item) => String(item.productId))
+        ).size,
+      },
+      requests,
+    });
+  } catch (err) {
+    console.error("Get seller stock requests error:", err);
+    return res.status(500).json({ message: "Failed to fetch stock requests." });
   }
 });
 

@@ -2,9 +2,10 @@
   import Navbar from "../Components/Navbar";
   import Footer from "../Components/Footer";
   import { HashLoader } from "react-spinners";
-  import { useNavigate } from "react-router-dom";
+  import { useNavigate, useLocation } from "react-router-dom";
   import { motion } from "framer-motion";
   import { FaBox, FaTruck, FaRegClock, FaRegTimesCircle, FaCheck } from "react-icons/fa";
+  import { getStoredUserToken } from "../utils/authStorage";
 
   const API_BASE = import.meta.env.VITE_BACKEND_API_URL
   ? import.meta.env.VITE_BACKEND_API_URL + "/api"
@@ -55,17 +56,21 @@
   }
 
   function ModernOrderTracker({ currentStatus }) {
-    let stages = currentStatus === "Cancelled"
-      ? ["Pending", "Placed", "Cancelled"]
-      : ORDER_STAGES;
-    const index = stages.indexOf(currentStatus);
+  let stages = currentStatus === "Cancelled"
+    ? ["Pending", "Placed", "Cancelled"]
+    : ORDER_STAGES;
 
-    return (
-      <div className="flex items-center w-full my-3">
-        {stages.map((stage, i) => {
-          const isActive = currentStatus === "Cancelled"
-            ? i < stages.length - 1 || stage === "Cancelled"
-            : i <= index;
+  const normalizedStages = stages.map(s => s.toLowerCase());
+  const normalizedStatus = currentStatus?.toLowerCase(); // ✅ ADD THIS
+
+  const index = normalizedStages.indexOf(normalizedStatus);
+
+  return (
+    <div className="flex items-center w-full my-3">
+      {stages.map((stage, i) => {
+        const isActive = normalizedStatus === "cancelled"
+          ? i < stages.length - 1 || stage === "Cancelled"
+          : i <= index;
           return (
             <React.Fragment key={stage}>
               <motion.div
@@ -81,7 +86,7 @@
                 animate={{ scale: isActive ? 1.09 : 1, opacity: 1 }}
                 transition={{ duration: 0.2 }}
               >
-                {ICON_MAP[stage]}
+                {ICON_MAP[stage] || <FaBox />}
               </motion.div>
               {i < stages.length - 1 &&
                 <div className={`flex-1 h-1 mx-2 rounded
@@ -148,12 +153,14 @@
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [selectedOrderId, setSelectedOrderId] = useState(null);
+    const [requestedOrderId, setRequestedOrderId] = useState(null);
     const [filterStatus, setFilterStatus] = useState("all");
     const [modalType, setModalType] = useState(null);
     const [modalOrderId, setModalOrderId] = useState(null);
     const [modalReason, setModalReason] = useState("");
-    const token = localStorage.getItem("token");
+    const token = getStoredUserToken();
     const navigate = useNavigate();
+    const location = useLocation();
 
     const selectedOrder = orders.find(o => o._id === selectedOrderId);
 
@@ -169,8 +176,8 @@
       }
       setFilteredOrders(
         ordersList.filter(o =>
-          normalizeStatus(o.orderStatus) === status ||
-          o.items.some(item => normalizeStatus(item.status) === status)
+          normalizeStatus(o.orderStatus) === normalizeStatus(status) ||
+          o.items.some(item => normalizeStatus(item.status) === normalizeStatus(status))
         )
       );
     };
@@ -179,9 +186,15 @@
       fetch(`${API_BASE}/orders`, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.ok ? res.json() : Promise.reject("Failed to fetch orders"))
         .then(data => {
-          setOrders(data.orders);
-          filterOrders(data.orders, filterStatus);
-          if (loading) setLoading(false);
+          const ordersToSet = Array.isArray(data.orders) ? data.orders : [];
+          setOrders(ordersToSet);
+          filterOrders(ordersToSet, filterStatus);
+          // if (loading) setLoading(false);
+          setLoading(false);
+          if (requestedOrderId && ordersToSet.length) {
+            const match = ordersToSet.find(o => o._id === requestedOrderId || o.orderId === requestedOrderId);
+            if (match) setSelectedOrderId(match._id);
+          }
         })
         .catch(() => {
           setError("Couldn't load orders.");
@@ -189,23 +202,83 @@
         });
     };
 
+    const fetchOrderById = async (orderId) => {
+      if (!orderId) return;
+      try {
+        const url = token
+          ? `${API_BASE}/orders/${encodeURIComponent(orderId)}`
+          : `${API_BASE}/orders/public/${encodeURIComponent(orderId)}`;
+        const res = await fetch(url, token ? {
+          headers: { Authorization: `Bearer ${token}` },
+        } : undefined);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.order) {
+          setOrders(prev => {
+            const exists = prev.some(o => o._id === data.order._id);
+            return exists ? prev : [data.order, ...prev];
+          });
+          setFilteredOrders(prev => {
+            const exists = prev.some(o => o._id === data.order._id);
+            return exists ? prev : [data.order, ...prev];
+          });
+          setSelectedOrderId(data.order._id);
+        }
+      } catch (err) {
+        console.error("Fetch order by ID failed:", err);
+      }
+    };
+
     useEffect(() => {
-      if (!token) {
+      const params = new URLSearchParams(location.search);
+      const orderIdFromUrl = params.get("orderId");
+      if (orderIdFromUrl) {
+        setRequestedOrderId(orderIdFromUrl);
+      }
+    }, [location.search]);
+
+    useEffect(() => {
+      if (!token && !requestedOrderId) {
         setError("Please login to view your orders.");
         setLoading(false);
         return;
       }
-      reloadOrders();
+      if (token) {
+        reloadOrders();
+      } else if (requestedOrderId) {
+        fetchOrderById(requestedOrderId).finally(() => setLoading(false));
+      }
       // eslint-disable-next-line
-    }, [token]);
+    }, [token, requestedOrderId]);
 
     useEffect(() => {
-      if (!token) return;
-      const interval = setInterval(() => {
-        reloadOrders();
-      }, 15000);
-      return () => clearInterval(interval);
-    }, [token]);
+  if (!token) return;
+
+  const interval = setInterval(() => {
+    if (!modalType && !selectedOrderId) {
+      reloadOrders();
+    }
+  }, 10000);
+
+  return () => clearInterval(interval);
+}, [token, selectedOrderId, modalType]);
+
+    useEffect(() => {
+  if (requestedOrderId && orders.length) {
+    const found = orders.find(
+      o => o._id === requestedOrderId || o.orderId === requestedOrderId
+    );
+
+    // ✅ only set if user ne manually select nahi kiya
+    if (!selectedOrderId) {
+      if (!found) {
+        fetchOrderById(requestedOrderId);
+      } else {
+        setSelectedOrderId(found._id);
+      }
+    }
+  }
+}, [requestedOrderId, orders, selectedOrderId]);
 
     useEffect(() => {
       filterOrders(orders, filterStatus);
@@ -319,7 +392,7 @@
           ) : (
             <div className="grid gap-7">
               {filteredOrders.map((order) => {
-                const currentStatus = order.items[0].status || order.orderStatus;
+                const currentStatus = order.items?.[0]?.status || order.orderStatus;
                 return (
                   <div
                     key={order._id}
@@ -328,15 +401,15 @@
                   >
                     <div className="flex flex-col items-center md:items-start w-full md:w-52">
                       <img
-                        src={order.items[0].image}
+                        src={order.items?.[0]?.image}
                         alt="Order"
                         className="w-20 h-20 rounded-lg object-cover shadow"
                       />
                       <p className="font-medium text-center text-sm mt-2">
-                        {order.items[0].name.length > 28
-                          ? order.items[0].name.slice(0, 28) + "..."
-                          : order.items[0].name}
-                        {order.items.length > 1 && <> +{order.items.length - 1}</>}
+                        {order.items?.[0]?.name?.length > 28
+                          ? order.items?.[0]?.name.slice(0, 28) + "..."
+                          : order.items?.[0]?.name}
+                        {order.items?.length > 1 && <> +{order.items.length - 1}</>}
                       </p>
                       <span className="text-xs text-gray-400">#{order._id.slice(0, 7)}</span>
                     </div>
@@ -358,7 +431,12 @@
                       </p>
                       <ModernOrderTracker currentStatus={currentStatus} />
                       {order.returnStatus && (
-                        <ModernReturnTracker currentStatus={order.returnStatus} />
+                        <>
+                          <ModernReturnTracker currentStatus={order.returnStatus} />
+                          <p className="text-xs text-yellow-800 font-semibold mt-1">
+                            Return Stage: {order.returnStatus}
+                          </p>
+                        </>
                       )}
                       {order.cancelReason && (
                         <p className="text-xs text-red-700 font-semibold mt-1">
@@ -389,10 +467,10 @@
                   <div>
                     <h3 className="font-semibold mb-2">Products</h3>
                     <ul className="space-y-4 max-h-80 overflow-y-auto">
-                      {selectedOrder.items.map((item) => {
+                      {selectedOrder.items?.map((item) => {
                         const itemStatus = item.status || selectedOrder.orderStatus;
                         return (
-                          <li key={item.id} className="flex items-center space-x-4">
+                          <li key={item._id || item.id} className="flex items-center space-x-4">
                             <img
                               src={item.image}
                               alt={item.name}
@@ -430,6 +508,8 @@
                         : (selectedOrder.paymentStatus || "N/A")}
                     </p>
                     <p><b>Order Status:</b> {selectedOrder.items[0].status || selectedOrder.orderStatus}</p>
+                    <p><b>Gift Card Used:</b> ₹{Number(selectedOrder.giftBalanceUsed || 0).toFixed(2)}</p>
+                    <p><b>Gift Card Refunded:</b> ₹{Number(selectedOrder.giftBalanceRefunded || 0).toFixed(2)}</p>
                     {selectedOrder.deliveredAt && (
                       <p><b>Delivered On:</b> {new Date(selectedOrder.deliveredAt).toLocaleDateString()}</p>
                     )}
@@ -444,20 +524,56 @@
                     )}
                   </div>
                 </div>
+                {selectedOrder.statusTimeline?.length > 0 && (
+                  <div className="mt-6 rounded-xl bg-gray-50 p-4">
+                    <h3 className="font-semibold mb-3">Order Timeline</h3>
+                    <div className="space-y-2">
+                      {selectedOrder.statusTimeline.map((entry, idx) => (
+                        <div key={`${entry.status}-${entry.createdAt}-${idx}`} className="flex justify-between gap-4 border-b border-gray-200 pb-2 text-sm">
+                          <div>
+                            <p className="font-semibold text-gray-800">{entry.status}</p>
+                            {entry.note ? <p className="text-xs text-gray-500">{entry.note}</p> : null}
+                          </div>
+                          <span className="text-xs text-gray-500 whitespace-nowrap">
+                            {entry.createdAt ? new Date(entry.createdAt).toLocaleString("en-IN") : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {selectedOrder.returnTimeline?.length > 0 && (
+                  <div className="mt-4 rounded-xl bg-yellow-50 p-4">
+                    <h3 className="font-semibold mb-3 text-yellow-800">Return Timeline</h3>
+                    <div className="space-y-2">
+                      {selectedOrder.returnTimeline.map((entry, idx) => (
+                        <div key={`${entry.status}-${entry.createdAt}-${idx}`} className="flex justify-between gap-4 border-b border-yellow-100 pb-2 text-sm">
+                          <div>
+                            <p className="font-semibold text-yellow-900">{entry.status}</p>
+                            {entry.note ? <p className="text-xs text-yellow-700">{entry.note}</p> : null}
+                          </div>
+                          <span className="text-xs text-yellow-700 whitespace-nowrap">
+                            {entry.createdAt ? new Date(entry.createdAt).toLocaleString("en-IN") : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="mt-6 flex gap-4 flex-wrap">
-                  {canCancel(selectedOrder) && (
+                  {token && canCancel(selectedOrder) && (
                     <button
                       onClick={() => openReasonModal("cancel", selectedOrder._id)}
                       className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded shadow"
                     >Cancel Order</button>
                   )}
-                  {canReturn(selectedOrder) && (
+                  {token && canReturn(selectedOrder) && (
                     <button
                       onClick={() => openReasonModal("return", selectedOrder._id)}
                       className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded shadow"
                     >Return Order</button>
                   )}
-                  {normalizeStatus(selectedOrder.orderStatus) === "returned" && selectedOrder.returnStatus === "Requested" && (
+                  {token && normalizeStatus(selectedOrder.orderStatus) === "returned" && selectedOrder.returnStatus === "Requested" && (
                     <button
                       onClick={() => cancelReturnRequest(selectedOrder._id)}
                       className="bg-gray-600 hover:bg-gray-800 text-white px-4 py-2 rounded shadow"

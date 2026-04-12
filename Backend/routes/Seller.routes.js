@@ -23,6 +23,16 @@ const serializeSeller = (seller) => ({
   isVerified: Boolean(seller.isVerified),
 });
 
+// GET current seller
+router.get("/me", sellerAuth, async (req, res) => {
+  try {
+    res.json(serializeSeller(req.seller));
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch profile" });
+  }
+});
+
+// SAME LOGIC for /profile
 router.get("/profile", sellerAuth, async (req, res) => {
   try {
     res.json(serializeSeller(req.seller));

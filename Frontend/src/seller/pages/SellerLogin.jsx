@@ -5,6 +5,7 @@ import { signInWithPopup } from "firebase/auth";
 import { sellerAuth, sellerProvider } from "../utils/firebase.seller";
 import { motion } from "framer-motion";
 import { HashLoader } from "react-spinners";
+import { useSellerAuth } from "../context/SellerAuthContext";
 
 const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
@@ -12,6 +13,7 @@ const logoUrl =
   "https://drive.google.com/uc?export=view&id=1XxU_zf3_ZBDjuEWqGorEYUgBTzjoyaW_";
 
 export default function SellerLogin() {
+  const { login } = useSellerAuth();
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,9 +34,15 @@ export default function SellerLogin() {
     setLoading(true);
     try {
       const { data } = await axios.post(`${BASE_API_URL}/api/sellers/auth/login`, formData);
-      localStorage.setItem("sellerToken", data.token);
+      login(data.token, data.seller);
       navigate("/seller/dashboard");
     } catch (err) {
+      if (err.response?.data?.requiresVerification) {
+        navigate("/seller/verify-account", {
+          state: { email: err.response?.data?.email || formData.email },
+        });
+        return;
+      }
       setError(
         err.response?.data?.error ||
         err.response?.data?.message ||
@@ -65,7 +73,7 @@ export default function SellerLogin() {
         `${BASE_API_URL}/api/sellers/auth/google-login`,
         payload
       );
-      localStorage.setItem("sellerToken", data.token);
+      login(data.token, data.seller);
       navigate("/seller/dashboard");
     } catch (err) {
       if (err.code === "auth/popup-closed-by-user") {

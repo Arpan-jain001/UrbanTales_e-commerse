@@ -1,46 +1,51 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  AppBar,
+  Avatar,
   Box,
-  Grid,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Avatar,
-  Button,
-  AppBar,
-  Toolbar,
-  CircularProgress,
   Chip,
-  TextField,
+  CircularProgress,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
+  DialogContent,
+  DialogTitle,
+  TextField,
+  Toolbar,
+  Typography,
 } from "@mui/material";
+import Grid from "@mui/material/Grid";
 import {
-  BarChart,
-  ShoppingCart,
-  EmojiEvents,
-  Assessment,
   AccessTime,
+  Assessment,
+  BarChart,
+  EmojiEvents,
+  Inventory2,
   LocalShipping,
   NotificationsActive,
+  ShoppingCart,
 } from "@mui/icons-material";
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from "chart.js";
 import { Bar } from "react-chartjs-2";
 import { motion } from "framer-motion";
 import axios from "axios";
 import SellerFooter from "../components/SellerFooter.jsx";
 import { useSellerAuth } from "../context/SellerAuthContext";
 
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+
 const API = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
-// --- Live Clock ---
 function LiveClock() {
   const [now, setNow] = useState(new Date());
+
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
   return (
     <Box
       sx={{
@@ -72,16 +77,14 @@ function LiveClock() {
 
 function ThoughtBanner() {
   const thoughts = [
-    "Success is not final; failure is not fatal. Keep moving forward!",
-    "Every sale is a step to your big dream.",
-    "Consistency builds empires — keep growing!",
-    "Small steps lead to big achievements.",
-    "Great things never come from comfort zones.",
+    "Success follows consistency. Keep your catalog fresh and your service sharper.",
+    "Every fulfilled order builds trust. Great stores win by reliability.",
+    "Low stock alerts are opportunities. Restock fast and stay ahead.",
+    "The best seller dashboards do not guess. They measure and act.",
+    "Small daily improvements compound into stronger store performance.",
   ];
-  const [thought, setThought] = useState(thoughts[0]);
-  useEffect(() => {
-    setThought(thoughts[Math.floor(Math.random() * thoughts.length)]);
-  }, []);
+  const [thought] = useState(thoughts[Math.floor(Math.random() * thoughts.length)]);
+
   return (
     <motion.div initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} className="mb-2">
       <Typography variant="subtitle2" color="primary" sx={{ fontStyle: "italic", fontWeight: 500 }}>
@@ -94,7 +97,7 @@ function ThoughtBanner() {
 function StatCard({ icon, label, value, color }) {
   return (
     <motion.div
-      whileHover={{ scale: 1.045, boxShadow: "0 8px 24px #5c27fe22" }}
+      whileHover={{ scale: 1.03, boxShadow: "0 8px 24px #5c27fe22" }}
       transition={{ type: "spring", stiffness: 180, damping: 16 }}
       style={{ width: "100%", height: "100%" }}
     >
@@ -115,10 +118,10 @@ function StatCard({ icon, label, value, color }) {
             {icon}
           </Avatar>
           <Box>
-            <Typography variant="h5" fontWeight={500} color="text.secondary">
+            <Typography variant="h6" fontWeight={500} color="text.secondary">
               {label}
             </Typography>
-            <Typography variant="h3" fontWeight={900} color={color}>
+            <Typography variant="h4" fontWeight={900} color={color}>
               {value}
             </Typography>
           </Box>
@@ -130,74 +133,73 @@ function StatCard({ icon, label, value, color }) {
 
 export default function SellerDashboard() {
   const { token, seller } = useSellerAuth();
-  const [products, setProducts] = useState([]);
-  const [orders, setOrders] = useState([]);
+  const [stats, setStats] = useState({
+    products: 0,
+    lowStockProducts: 0,
+    outOfStockProducts: 0,
+    soldUnits: 0,
+    grossEarnings: 0,
+    pendingOrders: 0,
+    activeReturnRequests: 0,
+    stockRequestCount: 0,
+  });
+  const [stockSummary, setStockSummary] = useState({
+    totalRequests: 0,
+    activeRequests: 0,
+    notifiedRequests: 0,
+    requestedProducts: 0,
+  });
   const [salesChart, setSalesChart] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Notification sender state
   const [showNotifDialog, setShowNotifDialog] = useState(false);
   const [notifTitle, setNotifTitle] = useState("");
   const [notifMessage, setNotifMessage] = useState("");
   const [notifStatus, setNotifStatus] = useState("");
 
-  const fetchLiveStats = () => {
+  const fetchLiveStats = async () => {
+    if (!token) return;
     setLoading(true);
-    let gotProducts = false,
-      gotOrders = false;
-    axios
-      .get(`${API}/api/sellers/products`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(({ data }) => {
-        setProducts(data || []);
-        gotProducts = true;
-        if (gotOrders) setLoading(false);
-      })
-      .catch(() => setLoading(false));
-    axios
-      .get(`${API}/api/sellers/orders`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(({ data }) => {
-        setOrders((data && data.orders) || []);
-        gotOrders = true;
-        if (gotProducts) setLoading(false);
-      })
-      .catch(() => setLoading(false));
-    axios
-      .get(`${API}/api/sellers/analytics/salesChart`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(({ data }) => setSalesChart(data || []))
-      .catch(() => setSalesChart([]));
+    try {
+      const [statsRes, chartRes, stockRes] = await Promise.all([
+        axios.get(`${API}/api/sellers/analytics/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        axios.get(`${API}/api/sellers/analytics/salesChart`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        axios.get(`${API}/api/sellers/notifications/stock-requests`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      setStats(statsRes.data || {});
+      setSalesChart(Array.isArray(chartRes.data) ? chartRes.data : []);
+      setStockSummary(stockRes.data?.summary || {});
+    } catch (error) {
+      console.error("Seller dashboard fetch error:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (token) fetchLiveStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchLiveStats();
   }, [token]);
 
-  // LIVE Stats logic
-  let sold = 0,
-    earnings = 0;
-  orders.forEach((order) => {
-    (order.items || []).forEach((item) => {
-      const isSold =
-        (order.paymentMethod !== "COD" && order.paymentStatus === "Successful") ||
-        (order.paymentMethod === "COD" && item.status === "Delivered");
-      if (isSold) {
-        sold += item.qty;
-        earnings += item.price * item.qty;
-      }
-    });
-  });
+  const chartData = useMemo(
+    () => ({
+      labels: salesChart.map((item) => item.month),
+      datasets: [
+        {
+          label: "Earnings",
+          data: salesChart.map((item) => item.earnings),
+          backgroundColor: "#5c27fe",
+        },
+      ],
+    }),
+    [salesChart]
+  );
 
-  // Chart Data
-  const chartData = {
-    labels: salesChart.map((item) => item.month),
-    datasets: [
-      {
-        label: "Earnings",
-        data: salesChart.map((item) => item.earnings),
-        backgroundColor: "#5c27fe",
-      },
-    ],
-  };
   const chartOptions = {
     plugins: { legend: { display: false } },
     scales: {
@@ -208,10 +210,9 @@ export default function SellerDashboard() {
     maintainAspectRatio: false,
   };
 
-  // Send notification handler
   const handleSendNotification = async () => {
     if (!notifTitle.trim() || !notifMessage.trim()) {
-      setNotifStatus("Title and message are required!");
+      setNotifStatus("Title and message are required.");
       return;
     }
 
@@ -232,17 +233,17 @@ export default function SellerDashboard() {
       );
 
       if (res.status === 201) {
-        setNotifStatus("✅ Notification sent successfully!");
+        setNotifStatus("Notification sent successfully.");
         setNotifTitle("");
         setNotifMessage("");
         setTimeout(() => {
           setShowNotifDialog(false);
           setNotifStatus("");
-        }, 1500);
+        }, 1200);
       }
     } catch (err) {
       console.error(err);
-      setNotifStatus("❌ Failed to send notification.");
+      setNotifStatus("Failed to send notification.");
     }
   };
 
@@ -266,12 +267,11 @@ export default function SellerDashboard() {
       <Box sx={{ px: { xs: 1, md: 5 }, py: 3, background: "#f8f6fc", minHeight: "100vh" }}>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <Typography variant="h4" fontWeight={800} color="primary" mb={0.5} mt={1}>
-            Hello, {seller?.fullName?.split(" ")[0] || seller?.email || "Seller"} 👋
+            Hello, {seller?.fullName?.split(" ")[0] || seller?.email || "Seller"}
           </Typography>
           <ThoughtBanner />
         </motion.div>
 
-        {/* Action buttons row */}
         <Box mb={3} display="flex" gap={2} flexWrap="wrap">
           <Button
             onClick={fetchLiveStats}
@@ -313,7 +313,7 @@ export default function SellerDashboard() {
 
         <Grid container spacing={4} my={2}>
           {loading ? (
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Box display="flex" justifyContent="center" alignItems="center" py={5}>
                 <CircularProgress color="primary" size={60} />
                 <Typography ml={3} color="primary">
@@ -323,75 +323,84 @@ export default function SellerDashboard() {
             </Grid>
           ) : (
             <>
-              <Grid item xs={12} md={4} sx={{ display: "flex" }}>
-                <StatCard icon={<EmojiEvents sx={{ fontSize: 44 }} />} label="Earnings" value={"₹" + earnings} color="#5c27fe" />
+              <Grid size={{ xs: 12, md: 4 }} sx={{ display: "flex" }}>
+                <StatCard icon={<EmojiEvents sx={{ fontSize: 44 }} />} label="Earnings" value={`₹${Number(stats.grossEarnings || 0).toLocaleString("en-IN")}`} color="#5c27fe" />
               </Grid>
-              <Grid item xs={12} md={4} sx={{ display: "flex" }}>
-                <StatCard icon={<ShoppingCart sx={{ fontSize: 44 }} />} label="Products" value={products.length} color="#FFCC00" />
+              <Grid size={{ xs: 12, md: 4 }} sx={{ display: "flex" }}>
+                <StatCard icon={<ShoppingCart sx={{ fontSize: 44 }} />} label="Products" value={stats.products || 0} color="#FFCC00" />
               </Grid>
-              <Grid item xs={12} md={4} sx={{ display: "flex" }}>
-                <StatCard icon={<Assessment sx={{ fontSize: 44 }} />} label="Sold" value={sold} color="#F43F5E" />
+              <Grid size={{ xs: 12, md: 4 }} sx={{ display: "flex" }}>
+                <StatCard icon={<Assessment sx={{ fontSize: 44 }} />} label="Sold Units" value={stats.soldUnits || 0} color="#F43F5E" />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }} sx={{ display: "flex" }}>
+                <StatCard icon={<LocalShipping sx={{ fontSize: 44 }} />} label="Pending Orders" value={stats.pendingOrders || 0} color="#0ea5e9" />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }} sx={{ display: "flex" }}>
+                <StatCard icon={<Inventory2 sx={{ fontSize: 44 }} />} label="Low / Out Stock" value={`${stats.lowStockProducts || 0}/${stats.outOfStockProducts || 0}`} color="#f59e0b" />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }} sx={{ display: "flex" }}>
+                <StatCard icon={<NotificationsActive sx={{ fontSize: 44 }} />} label="Notify Requests" value={stockSummary.activeRequests || stats.stockRequestCount || 0} color="#10b981" />
               </Grid>
             </>
           )}
         </Grid>
 
-        {/* Quick Action Buttons */}
         <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}>
           <Grid container spacing={3} mb={4} mt={5} alignItems="stretch">
-            <Grid item xs={12} md={3}>
-              <motion.div whileHover={{ scale: 1.08, y: -5, boxShadow: "0 10px 42px #ffcc0030" }}>
+            <Grid size={{ xs: 12, md: 2.4 }}>
+              <motion.div whileHover={{ scale: 1.06, y: -5 }}>
                 <Button
                   variant="outlined"
                   fullWidth
                   href="/seller/products"
-                  sx={{ color: "#FFCC00", borderColor: "#FFCC00", fontWeight: 700, py: 2, borderRadius: 2, fontSize: 17 }}
+                  sx={{ color: "#FFCC00", borderColor: "#FFCC00", fontWeight: 700, py: 2, borderRadius: 2, fontSize: 16 }}
                   startIcon={<ShoppingCart />}
                 >
                   Products
                 </Button>
               </motion.div>
             </Grid>
-            <Grid item xs={12} md={3}>
-              <motion.div whileHover={{ scale: 1.08, y: -5, boxShadow: "0 10px 42px #f43f5e15" }}>
+            <Grid size={{ xs: 12, md: 2.4 }}>
+              <motion.div whileHover={{ scale: 1.06, y: -5 }}>
                 <Button
                   variant="outlined"
                   fullWidth
                   href="/seller/add-product"
-                  sx={{ color: "#F43F5E", borderColor: "#F43F5E", fontWeight: 700, py: 2, borderRadius: 2, fontSize: 17 }}
+                  sx={{ color: "#F43F5E", borderColor: "#F43F5E", fontWeight: 700, py: 2, borderRadius: 2, fontSize: 16 }}
                   startIcon={<BarChart />}
                 >
                   Add Product
                 </Button>
               </motion.div>
             </Grid>
-            <Grid item xs={12} md={2.5}>
-              <motion.div whileHover={{ scale: 1.08, y: -5, boxShadow: "0 10px 42px #5c27fe18" }}>
+            <Grid size={{ xs: 12, md: 2.4 }}>
+              <motion.div whileHover={{ scale: 1.06, y: -5 }}>
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  href="/seller/stock-requests"
+                  sx={{ color: "#10b981", borderColor: "#10b981", fontWeight: 700, py: 2, borderRadius: 2, fontSize: 16 }}
+                  startIcon={<NotificationsActive />}
+                >
+                  Stock Requests
+                </Button>
+              </motion.div>
+            </Grid>
+            <Grid size={{ xs: 12, md: 2.4 }}>
+              <motion.div whileHover={{ scale: 1.06, y: -5 }}>
                 <Button
                   variant="outlined"
                   fullWidth
                   href="/seller/earnings"
-                  sx={{ color: "#5c27fe", borderColor: "#5c27fe", fontWeight: 700, py: 2, borderRadius: 2, fontSize: 17 }}
+                  sx={{ color: "#5c27fe", borderColor: "#5c27fe", fontWeight: 700, py: 2, borderRadius: 2, fontSize: 16 }}
                   startIcon={<EmojiEvents />}
                 >
                   Earnings
                 </Button>
               </motion.div>
             </Grid>
-            <Grid item xs={12} md={2.5}>
-              <motion.div whileHover={{ scale: 1.08, y: -5, boxShadow: "0 10px 42px #44C77629" }}>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  href="/seller/profile"
-                  sx={{ color: "#44C776", borderColor: "#44C776", fontWeight: 700, py: 2, borderRadius: 2, fontSize: 17 }}
-                >
-                  Profile
-                </Button>
-              </motion.div>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <motion.div whileHover={{ scale: 1.08, y: -5, boxShadow: "0 10px 42px #5c27fe15" }}>
+            <Grid size={{ xs: 12, md: 2.4 }}>
+              <motion.div whileHover={{ scale: 1.06, y: -5 }}>
                 <Button
                   variant="contained"
                   fullWidth
@@ -402,9 +411,9 @@ export default function SellerDashboard() {
                     fontWeight: 700,
                     borderRadius: 2,
                     py: 2,
-                    fontSize: 17,
+                    fontSize: 16,
                     textTransform: "none",
-                                        boxShadow: 3,
+                    boxShadow: 3,
                     "&:hover": { bgcolor: "#43208a", boxShadow: 5 },
                   }}
                   startIcon={<LocalShipping />}
@@ -416,37 +425,55 @@ export default function SellerDashboard() {
           </Grid>
         </motion.div>
 
-        {/* Earnings Chart */}
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
-          <Card
-            sx={{
-              borderRadius: 3,
-              mb: 4,
-              p: 2,
-              backdropFilter: "blur(3px)",
-              background: "rgba(255,255,255,.75)",
-              height: 320,
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6" mb={2} color="primary">
-                Monthly Earnings
-              </Typography>
-              {salesChart.length === 0 ? (
-                <Typography color="text.secondary" fontStyle="italic">
-                  No sales data available!
+        <Grid container spacing={4}>
+          <Grid size={{ xs: 12, lg: 8 }}>
+            <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
+              <Card
+                sx={{
+                  borderRadius: 3,
+                  mb: 4,
+                  p: 2,
+                  backdropFilter: "blur(3px)",
+                  background: "rgba(255,255,255,.75)",
+                  height: 320,
+                }}
+              >
+                <CardContent>
+                  <Typography variant="h6" mb={2} color="primary">
+                    Monthly Earnings
+                  </Typography>
+                  {salesChart.length === 0 ? (
+                    <Typography color="text.secondary" fontStyle="italic">
+                      No sales data available yet.
+                    </Typography>
+                  ) : (
+                    <Box sx={{ height: 240 }}>
+                      <Bar key={salesChart.map((item) => item.month).join(",")} data={chartData} options={chartOptions} />
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          </Grid>
+
+          <Grid size={{ xs: 12, lg: 4 }}>
+            <Card sx={{ borderRadius: 3, p: 2, background: "rgba(255,255,255,.92)" }}>
+              <CardContent>
+                <Typography variant="h6" color="primary" mb={2}>
+                  Operational Snapshot
                 </Typography>
-              ) : (
-                <Box sx={{ height: 240 }}>
-                  <Bar data={chartData} options={chartOptions} />
+                <Box display="flex" flexDirection="column" gap={1.5}>
+                  <Chip label={`Active return requests: ${stats.activeReturnRequests || 0}`} color="warning" variant="outlined" />
+                  <Chip label={`Notify requests waiting: ${stockSummary.activeRequests || 0}`} color="success" variant="outlined" />
+                  <Chip label={`Low stock products: ${stats.lowStockProducts || 0}`} color="info" variant="outlined" />
+                  <Chip label={`Out of stock products: ${stats.outOfStockProducts || 0}`} color="error" variant="outlined" />
                 </Box>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
       </Box>
 
-      {/* Notification Dialog */}
       <Dialog
         open={showNotifDialog}
         onClose={() => {
@@ -457,7 +484,7 @@ export default function SellerDashboard() {
         fullWidth
       >
         <DialogTitle sx={{ bgcolor: "#5c27fe", color: "#fff", fontWeight: 700 }}>
-          📢 Send Notification to Users
+          Send Notification to Users
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           <TextField
@@ -467,7 +494,7 @@ export default function SellerDashboard() {
             value={notifTitle}
             onChange={(e) => setNotifTitle(e.target.value)}
             sx={{ mb: 2, mt: 1 }}
-            placeholder="e.g., Special Offer, New Product Launch"
+            placeholder="e.g. Special Offer, New Product Launch"
           />
           <TextField
             label="Message"
@@ -479,18 +506,18 @@ export default function SellerDashboard() {
             onChange={(e) => setNotifMessage(e.target.value)}
             placeholder="Type your message for users..."
           />
-          {notifStatus && (
+          {notifStatus ? (
             <Typography
               variant="body2"
               sx={{
                 mt: 2,
-                color: notifStatus.includes("✅") ? "green" : "red",
+                color: notifStatus.toLowerCase().includes("success") ? "green" : "#5c27fe",
                 fontWeight: 600,
               }}
             >
               {notifStatus}
             </Typography>
-          )}
+          ) : null}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button
@@ -522,4 +549,3 @@ export default function SellerDashboard() {
     </>
   );
 }
-  

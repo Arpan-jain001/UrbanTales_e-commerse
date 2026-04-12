@@ -1,11 +1,13 @@
-import mongoose from "mongoose";
 import User from "../models/user.js";
 import Seller from "../models/Seller.js";
 import Product from "../models/product.js";
 import Order from "../models/Order.js";
+import GiftCard from "../models/GiftCard.js";
 
+const DELIVERED_STATUSES = ["Delivered"];
 
-// Helper: start of today
+const roundAmount = (value) => Number(Number(value || 0).toFixed(2));
+
 const getTodayRange = () => {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -14,31 +16,77 @@ const getTodayRange = () => {
   return { start, end };
 };
 
-// GET /api/admin/stats/overview
+const normalizeWallets = async () => {
+  const now = Date.now();
+  const wallets = await GiftCard.find({ kind: "WALLET" });
+
+  for (const wallet of wallets) {
+    let changed = false;
+    let expiredDelta = 0;
+
+    wallet.walletEntries = (wallet.walletEntries || []).map((entry) => {
+      const hasExpired =
+        entry.status === "ACTIVE" &&
+        entry.expiresAt &&
+        new Date(entry.expiresAt).getTime() < now &&
+        Number(entry.remainingAmount || 0) > 0;
+
+      if (!hasExpired) {
+        return entry;
+      }
+
+      const expiringAmount = Number(entry.remainingAmount || 0);
+      expiredDelta += expiringAmount;
+      entry.expiredAmount = roundAmount(
+        Number(entry.expiredAmount || 0) + expiringAmount
+      );
+      entry.remainingAmount = 0;
+      entry.status = "EXPIRED";
+      changed = true;
+      return entry;
+    });
+
+    if (changed) {
+      wallet.balance = roundAmount(
+        Math.max(0, Number(wallet.balance || 0) - expiredDelta)
+      );
+      await wallet.save();
+    }
+  }
+};
+
 export const getAdminOverviewStats = async (req, res) => {
   try {
-    const [{ totalUsers = 0 } = {}] = await User.aggregate([
-      { $count: "totalUsers" },
+    const [
+      totalUsers,
+      verifiedUsers,
+      totalSellers,
+      verifiedSellers,
+      totalProducts,
+      totalOrders,
+      returnOrders,
+      pendingReturns,
+    ] = await Promise.all([
+      User.countDocuments(),
+      User.countDocuments({ isVerified: true }),
+      Seller.countDocuments(),
+      Seller.countDocuments({ isVerified: true }),
+      Product.countDocuments(),
+      Order.countDocuments(),
+      Order.countDocuments({
+        $or: [{ orderStatus: "Returned" }, { returnStatus: { $ne: "" } }],
+      }),
+      Order.countDocuments({
+        returnStatus: {
+          $in: ["Requested", "Pickup Scheduled", "Picked Up", "Refund Initiated"],
+        },
+      }),
     ]);
 
-    const [{ totalSellers = 0 } = {}] = await Seller.aggregate([
-      { $count: "totalSellers" },
-    ]);
-
-    const [{ totalProducts = 0 } = {}] = await Product.aggregate([
-      { $count: "totalProducts" },
-    ]);
-
-    // total orders
-    const [{ totalOrders = 0 } = {}] = await Order.aggregate([
-      { $count: "totalOrders" },
-    ]);
-
-    // total revenue (delivered/completed only)
     const [{ totalRevenue = 0 } = {}] = await Order.aggregate([
       {
         $match: {
-          status: { $in: ["DELIVERED", "COMPLETED"] },
+          orderStatus: { $in: DELIVERED_STATUSES },
         },
       },
       {
@@ -50,12 +98,11 @@ export const getAdminOverviewStats = async (req, res) => {
       { $project: { _id: 0, totalRevenue: 1 } },
     ]);
 
-    // today sales
     const { start, end } = getTodayRange();
     const [{ todaySales = 0 } = {}] = await Order.aggregate([
       {
         $match: {
-          status: { $in: ["DELIVERED", "COMPLETED"] },
+          orderStatus: { $in: DELIVERED_STATUSES },
           createdAt: { $gte: start, $lte: end },
         },
       },
@@ -70,25 +117,27 @@ export const getAdminOverviewStats = async (req, res) => {
 
     return res.json({
       totalUsers,
+      verifiedUsers,
+      unverifiedUsers: Math.max(0, totalUsers - verifiedUsers),
       totalSellers,
+      verifiedSellers,
+      unverifiedSellers: Math.max(0, totalSellers - verifiedSellers),
       totalProducts,
       totalOrders,
       totalRevenue,
       todaySales,
+      returnOrders,
+      pendingReturns,
     });
   } catch (error) {
     console.error("getAdminOverviewStats error:", error);
-    return res
-      .status(500)
-      .json({ message: "Failed to load overview stats." });
+    return res.status(500).json({ message: "Failed to load overview stats." });
   }
 };
 
-// GET /api/admin/stats/sales/daily?days=7
 export const getAdminDailySales = async (req, res) => {
   try {
     const days = parseInt(req.query.days, 10) || 7;
-
     const now = new Date();
     const fromDate = new Date();
     fromDate.setDate(now.getDate() - (days - 1));
@@ -97,7 +146,7 @@ export const getAdminDailySales = async (req, res) => {
     const raw = await Order.aggregate([
       {
         $match: {
-          status: { $in: ["DELIVERED", "COMPLETED"] },
+          orderStatus: { $in: DELIVERED_STATUSES },
           createdAt: { $gte: fromDate, $lte: now },
         },
       },
@@ -121,18 +170,17 @@ export const getAdminDailySales = async (req, res) => {
       },
     ]);
 
-    // Normalize to always return last X days (including 0 sales days)
     const result = [];
-    for (let i = days - 1; i >= 0; i--) {
+    for (let i = days - 1; i >= 0; i -= 1) {
       const d = new Date();
       d.setDate(now.getDate() - i);
       d.setHours(0, 0, 0, 0);
 
       const hit = raw.find(
-        (r) =>
-          r._id.year === d.getFullYear() &&
-          r._id.month === d.getMonth() + 1 &&
-          r._id.day === d.getDate()
+        (row) =>
+          row._id.year === d.getFullYear() &&
+          row._id.month === d.getMonth() + 1 &&
+          row._id.day === d.getDate()
       );
 
       result.push({
@@ -145,8 +193,82 @@ export const getAdminDailySales = async (req, res) => {
     return res.json(result);
   } catch (error) {
     console.error("getAdminDailySales error:", error);
-    return res
-      .status(500)
-      .json({ message: "Failed to load daily sales stats." });
+    return res.status(500).json({ message: "Failed to load daily sales stats." });
+  }
+};
+
+export const getAdminFinanceSummary = async (req, res) => {
+  try {
+    await normalizeWallets();
+
+    const wallets = await GiftCard.find({ kind: "WALLET" }).lean();
+    const refundOrders = await Order.countDocuments({ returnStatus: { $ne: "" } });
+    const pendingRefundOrders = await Order.countDocuments({
+      returnStatus: {
+        $in: ["Requested", "Pickup Scheduled", "Picked Up", "Refund Initiated"],
+      },
+    });
+
+    const summary = wallets.reduce(
+      (acc, wallet) => {
+        if (Number(wallet.balance || 0) > 0) {
+          acc.activeWalletCount += 1;
+        }
+
+        for (const entry of wallet.walletEntries || []) {
+          const amount = Number(entry.amount || 0);
+          const remainingAmount = Number(entry.remainingAmount || 0);
+          const expiredAmount = Number(entry.expiredAmount || 0);
+          const usedAmount = Math.max(0, amount - remainingAmount - expiredAmount);
+
+          acc.totalWalletIssued += amount;
+          acc.walletLiability += remainingAmount;
+          acc.totalWalletExpired += expiredAmount;
+          acc.totalWalletUsed += usedAmount;
+
+          if (entry.source === "RETURN_REFUND") {
+            acc.totalReturnRefunded += amount;
+          }
+
+          if (
+            entry.status === "ACTIVE" &&
+            entry.expiresAt &&
+            new Date(entry.expiresAt).getTime() <=
+              Date.now() + 7 * 24 * 60 * 60 * 1000
+          ) {
+            acc.expiringSoonAmount += remainingAmount;
+            acc.expiringSoonEntries += 1;
+          }
+        }
+
+        return acc;
+      },
+      {
+        walletLiability: 0,
+        totalWalletIssued: 0,
+        totalWalletUsed: 0,
+        totalWalletExpired: 0,
+        totalReturnRefunded: 0,
+        activeWalletCount: 0,
+        expiringSoonAmount: 0,
+        expiringSoonEntries: 0,
+      }
+    );
+
+    return res.json({
+      walletLiability: roundAmount(summary.walletLiability),
+      totalWalletIssued: roundAmount(summary.totalWalletIssued),
+      totalWalletUsed: roundAmount(summary.totalWalletUsed),
+      totalWalletExpired: roundAmount(summary.totalWalletExpired),
+      totalReturnRefunded: roundAmount(summary.totalReturnRefunded),
+      activeWalletCount: summary.activeWalletCount,
+      expiringSoonAmount: roundAmount(summary.expiringSoonAmount),
+      expiringSoonEntries: summary.expiringSoonEntries,
+      refundOrders,
+      pendingRefundOrders,
+    });
+  } catch (error) {
+    console.error("getAdminFinanceSummary error:", error);
+    return res.status(500).json({ message: "Failed to load finance summary." });
   }
 };

@@ -1,4 +1,5 @@
 import Product from "../models/product.js";
+import { notifyStockSubscribers } from "./stockAlertController.js";
 
 const normalizeSizes = (sizes = []) =>
   Array.from(
@@ -79,9 +80,15 @@ export const update = async (req, res) => {
     const prod = await Product.findOne({ _id: req.params.id, sellerId: req.seller._id });
     if (!prod) return res.status(404).json({ message: "Product not found" });
 
+    const previousStock = prod.stock;
     const payload = buildPayload({ ...prod.toObject(), ...req.body }, req.seller._id);
     Object.assign(prod, payload);
     await prod.save();
+
+    if (previousStock <= 0 && prod.stock > 0) {
+      await notifyStockSubscribers(prod);
+    }
+
     res.status(200).json(prod);
   } catch (e) {
     console.error("Update product failed:", e);

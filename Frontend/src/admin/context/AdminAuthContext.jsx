@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import axios from "axios";
+import { clearAuthSession, getAuthToken, getAuthUser, saveAuthSession } from "../../utils/authSession";
 
 const AdminAuthContext = createContext(null);
 
@@ -7,10 +8,8 @@ const BASE_API_URL =
   import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
 export function AdminAuthProvider({ children }) {
-  const [admin, setAdmin] = useState(null);
-  const [token, setToken] = useState(
-    () => localStorage.getItem("adminToken") || null
-  );
+  const [admin, setAdmin] = useState(() => getAuthUser("admin"));
+  const [token, setToken] = useState(() => getAuthToken("admin") || null);
   const [loading, setLoading] = useState(!!token);
 
   useEffect(() => {
@@ -22,25 +21,34 @@ export function AdminAuthProvider({ children }) {
       })
       .then((res) => {
         setAdmin(res.data.admin);
+        saveAuthSession("admin", {
+          token,
+          user: res.data.admin,
+          remember: true,
+        });
       })
       .catch(() => {
         setAdmin(null);
         setToken(null);
-        localStorage.removeItem("adminToken");
+        clearAuthSession("admin");
       })
       .finally(() => setLoading(false));
   }, [token]);
 
   const login = (data) => {
     setToken(data.token);
-    localStorage.setItem("adminToken", data.token);
     setAdmin(data.admin);
+    saveAuthSession("admin", {
+      token: data.token,
+      user: data.admin,
+      remember: true,
+    });
   };
 
   const logout = () => {
     setAdmin(null);
     setToken(null);
-    localStorage.removeItem("adminToken");
+    clearAuthSession("admin");
   };
 
   const value = {

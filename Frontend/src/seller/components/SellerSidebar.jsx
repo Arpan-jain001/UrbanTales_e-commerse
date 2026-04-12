@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { BarChart2, Boxes, Box, ShoppingCart, User, DollarSign } from "lucide-react";
+import { BarChart2, Boxes, Box, ShoppingCart, User, DollarSign, BellRing } from "lucide-react";
 import { useSellerAuth } from "../context/SellerAuthContext";
 import axios from "axios";
 
@@ -9,6 +9,7 @@ const sidebarItems = [
   { label: "Products", href: "/seller/products", icon: <Boxes /> },
   { label: "Add Product", href: "/seller/add-product", icon: <Box /> },
   { label: "Orders", href: "/seller/orders", icon: <ShoppingCart /> },
+  { label: "Stock Requests", href: "/seller/stock-requests", icon: <BellRing /> },
   { label: "Earnings", href: "/seller/earnings", icon: <DollarSign /> },
   { label: "Profile", href: "/seller/profile", icon: <User /> },
 ];

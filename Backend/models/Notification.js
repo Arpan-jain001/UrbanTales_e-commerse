@@ -52,6 +52,8 @@ const notificationSchema = new mongoose.Schema(
       enum: ["order", "product", "account", "promotion", "announcement", "alert", "general"],
       default: "general",
     },
+    productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: false },
+    image: { type: String, default: "" },
     link: { type: String },
     isRead: { type: Boolean, default: false },
     

@@ -224,6 +224,9 @@ export default function SingleProduct() {
 
   // Share & wishlist
   const [wishlist, setWishlist] = useState(false);
+  const [wishlistIds, setWishlistIds] = useState([]);
+  const [selectedSize, setSelectedSize] = useState("");
+  const [selectedColor, setSelectedColor] = useState("");
 
   // Reviews
   const [currentUser, setCurrentUser] = useState(null);
@@ -254,7 +257,10 @@ export default function SingleProduct() {
         const res = await fetch(`${BASE_API_URL}/api/users/profile`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        if (res.ok) setCurrentUser(await res.json());
+        if (res.ok) {
+          const data = await res.json();
+          setCurrentUser(data?.user || data);
+        }
         else {
           const payload = JSON.parse(atob(token.split('.')[1]));
           setCurrentUser({ _id: payload.userId, id: payload.userId });
@@ -262,6 +268,31 @@ export default function SingleProduct() {
       } catch { /* ignore */ }
     })();
   }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const fetchWishlist = async () => {
+      try {
+        const res = await fetch(`${BASE_API_URL}/api/wishlist`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (res.ok && Array.isArray(data.wishlist)) {
+          const ids = data.wishlist.map((item) => item._id || item.id || item);
+          setWishlistIds(ids);
+          setWishlist(ids.includes(id));
+        } else if (data.message === "Invalid token") {
+          localStorage.removeItem("token");
+        }
+      } catch (err) {
+        console.error("Failed to load wishlist:", err);
+      }
+    };
+
+    fetchWishlist();
+  }, [id]);
 
   // Fetch product + suggestions
   useEffect(() => {
@@ -273,6 +304,8 @@ export default function SingleProduct() {
         const data = await res.json();
         if (!isMounted) return;
         setProduct(data);
+        setSelectedSize(data?.availableSizes?.[0] || "");
+        setSelectedColor(data?.availableColors?.[0]?.name || "");
 
         // suggestions
         if (data?.category) {
@@ -348,12 +381,29 @@ export default function SingleProduct() {
   const addToCart = async (showAlert = true) => {
     const token = localStorage.getItem("token");
     if (!token) { navigate("/login"); return false; }
+    if (product?.availableSizes?.length && !selectedSize) {
+      if (showAlert) alert("Please select a size");
+      return false;
+    }
+    if (product?.availableColors?.length && !selectedColor) {
+      if (showAlert) alert("Please select a color");
+      return false;
+    }
+    const selectedColorData = product?.availableColors?.find((color) => color.name === selectedColor);
     const item = {
       id: product._id,
       name: product.name,
       price: product.price,
-      image: getMediaItems(product)[selected]?.url || product.images?.[0] || product.image,
-      qty: 1
+      image:
+        selectedColorData?.image ||
+        getMediaItems(product)[selected]?.url ||
+        product.images?.[0] ||
+        product.image,
+      qty: 1,
+      sellerId: product.sellerId,
+      selectedSize,
+      selectedColor,
+      selectedColorImage: selectedColorData?.image || "",
     };
     try {
       const res = await fetch(`${BASE_API_URL}/api/cart/add`, {
@@ -370,8 +420,100 @@ export default function SingleProduct() {
     }
   };
   const handleBuyNow = async () => {
+    if (Number(product.stock || 0) <= 0) {
+      notifyMe();
+      return;
+    }
     const success = await addToCart(false);
     if (success) navigate("/cartpage");
+  };
+
+  const toggleWishlist = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login to manage your wishlist.");
+      navigate("/login");
+      return;
+    }
+
+    if (wishlist) {
+      try {
+        const res = await fetch(`${BASE_API_URL}/api/wishlist/${product._id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setWishlist(false);
+          setWishlistIds((prev) => prev.filter((id) => id !== product._id));
+          alert(data.message || "Removed from wishlist");
+        } else if (data.message === "Invalid token") {
+          localStorage.removeItem("token");
+          navigate("/login");
+        } else {
+          alert(data.message || "Unable to remove from wishlist.");
+        }
+      } catch {
+        alert("Unable to update wishlist. Please try again.");
+      }
+    } else {
+      try {
+        const res = await fetch(`${BASE_API_URL}/api/wishlist`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ productId: product._id }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setWishlist(true);
+          setWishlistIds((prev) => [...prev, product._id]);
+          alert(data.message || "Added to wishlist");
+        } else if (data.message === "Invalid token") {
+          localStorage.removeItem("token");
+          navigate("/login");
+        } else {
+          alert(data.message || "Unable to add to wishlist.");
+        }
+      } catch {
+        alert("Unable to update wishlist. Please try again.");
+      }
+    }
+  };
+
+  const notifyMe = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login to request a back-in-stock notification.");
+      navigate("/login");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${BASE_API_URL}/api/stock-alerts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ productId: product?._id, variant: selectedColor || selectedSize || "" }),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        alert(data.message || "We will notify you when this product is back in stock.");
+      } else if (data.message === "Invalid token") {
+        localStorage.removeItem("token");
+        navigate("/login");
+      } else {
+        alert(data.message || "Unable to subscribe for stock alerts.");
+      }
+    } catch (err) {
+      console.error("Stock alert request failed:", err);
+      alert("Unable to subscribe for stock alerts right now.");
+    }
   };
 
   // Desktop hover zoom positioning
@@ -469,6 +611,16 @@ export default function SingleProduct() {
     });
   }, [product, selected]);
 
+  useEffect(() => {
+    if (!product?.availableColors?.length || !selectedColor) return;
+    const color = product.availableColors.find((item) => item.name === selectedColor);
+    if (!color?.image) return;
+    const imageIndex = mediaItems?.findIndex((item) => item.type === "image" && item.url === color.image);
+    if (imageIndex >= 0) {
+      setSelected(imageIndex);
+    }
+  }, [selectedColor, product]);
+
   /* -----------------------------
      Loading skeleton (shimmer)
   ------------------------------*/
@@ -497,6 +649,7 @@ export default function SingleProduct() {
   if (!product) return null;
 
   const mediaItems = getMediaItems(product);
+  const selectedColorData = product?.availableColors?.find((color) => color.name === selectedColor);
 
   // Like / Reply actions
   const handleLike = async (reviewId) => {
@@ -607,7 +760,8 @@ export default function SingleProduct() {
                   className="flex-1 flex items-center justify-center bg-white border border-gray-200 rounded-lg p-3 relative overflow-hidden max-h-[360px] md:max-h-[450px] lg:max-h-[500px]"
                 >
                   <button
-                    onClick={() => setWishlist(!wishlist)}
+                    type="button"
+                    onClick={toggleWishlist}
                     className="absolute top-4 right-4 z-10 bg-white rounded-full p-2 shadow-md hover:scale-110 transition"
                     aria-label="Wishlist"
                   >
@@ -721,6 +875,64 @@ export default function SingleProduct() {
                   <p className="text-sm text-green-600 mt-1">+ ₹{Math.round((product.price || 0) * 0.05)} cashback</p>
                 </div>
 
+                {!!product.availableSizes?.length && (
+                  <div className="mb-6">
+                    <h3 className="font-semibold text-gray-800 mb-3">Select Size</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {product.availableSizes.map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => setSelectedSize(size)}
+                          className={`min-w-[52px] px-4 py-2 rounded border text-sm font-semibold transition ${
+                            selectedSize === size
+                              ? "border-blue-600 bg-blue-600 text-white"
+                              : "border-gray-300 bg-white text-gray-700 hover:border-blue-400"
+                          }`}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!!product.availableColors?.length && (
+                  <div className="mb-6">
+                    <h3 className="font-semibold text-gray-800 mb-3">Select Color</h3>
+                    <div className="flex flex-wrap gap-3">
+                      {product.availableColors.map((color) => (
+                        <button
+                          key={color.name}
+                          type="button"
+                          onClick={() => setSelectedColor(color.name)}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition ${
+                            selectedColor === color.name
+                              ? "border-blue-600 bg-blue-50"
+                              : "border-gray-300 bg-white hover:border-blue-400"
+                          }`}
+                        >
+                          {color.image ? (
+                            <img
+                              src={color.image}
+                              alt={color.name}
+                              className="w-9 h-9 rounded-full object-cover border"
+                            />
+                          ) : (
+                            <span className="w-9 h-9 rounded-full border bg-gray-100" />
+                          )}
+                          <span className="text-sm font-medium text-gray-700">{color.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {selectedColorData?.image && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Selected color image will be used in cart and order details.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Offers */}
                 <div className="mb-6 border rounded-lg p-4 bg-gray-50">
                   <h3 className="font-semibold text-gray-800 mb-3">Available Offers</h3>
@@ -787,18 +999,26 @@ export default function SingleProduct() {
                 {/* Action Buttons - Desktop Only */}
 <div className="hidden lg:flex gap-4 mt-4 lg:mt-auto"> 
   <motion.button
-    whileTap={{ scale: 0.98 }}
-    onClick={() => addToCart(true)}
-    className="flex-1 bg-linear-to-r from-yellow-400 to-orange-500 text-white font-semibold py-3 rounded-lg shadow-md hover:shadow-lg transition flex items-center justify-center gap-2"
+    whileTap={{ scale: Number(product.stock || 0) <= 0 ? 1 : 0.98 }}
+    onClick={() => (Number(product.stock || 0) <= 0 ? notifyMe() : addToCart(true))}
+    className={`flex-1 text-white font-semibold py-3 rounded-lg shadow-md transition flex items-center justify-center gap-2 ${
+      Number(product.stock || 0) <= 0
+        ? "bg-slate-500 text-white"
+        : "bg-linear-to-r from-yellow-400 to-orange-500 hover:shadow-lg"
+    }`}
   >
-    <FaShoppingCart /> ADD TO CART
+    <FaShoppingCart /> {Number(product.stock || 0) <= 0 ? "Notify Me" : "ADD TO CART"}
   </motion.button>
   <motion.button
-    whileTap={{ scale: 0.98 }}
+    whileTap={{ scale: Number(product.stock || 0) <= 0 ? 1 : 0.98 }}
     onClick={handleBuyNow}
-    className="flex-1 bg-linear-to-r from-orange-500 to-red-500 text-white font-semibold py-3 rounded-lg shadow-md hover:shadow-lg transition flex items-center justify-center gap-2"
+    className={`flex-1 text-white font-semibold py-3 rounded-lg shadow-md transition flex items-center justify-center gap-2 ${
+      Number(product.stock || 0) <= 0
+        ? "bg-slate-500 text-white"
+        : "bg-linear-to-r from-orange-500 to-red-500 hover:shadow-lg"
+    }`}
   >
-    <FaBolt /> BUY NOW
+    <FaBolt /> {Number(product.stock || 0) <= 0 ? "Notify Me" : "BUY NOW"}
   </motion.button>
 </div>
               </div>
@@ -949,17 +1169,25 @@ export default function SingleProduct() {
         {/* ✅ Sticky Mobile Buy Bar */}
         <div className="fixed bottom-0 left-0 w-full bg-white border-t shadow-2xl flex lg:hidden z-50">
           <button
-            onClick={() => addToCart(true)}
-            className="w-1/2 py-4 bg-yellow-500 text-black font-bold text-lg flex items-center justify-center gap-2"
+            onClick={() => (Number(product.stock || 0) <= 0 ? notifyMe() : addToCart(true))}
+            className={`w-1/2 py-4 font-bold text-lg flex items-center justify-center gap-2 ${
+              Number(product.stock || 0) <= 0
+                ? "bg-slate-500 text-white"
+                : "bg-yellow-500 text-black"
+            }`}
           >
-            <FaShoppingCart /> Add to Cart
+            <FaShoppingCart /> {Number(product.stock || 0) <= 0 ? "Notify Me" : "Add to Cart"}
           </button>
 
           <button
             onClick={handleBuyNow}
-            className="w-1/2 py-4 bg-orange-600 text-white font-bold text-lg flex items-center justify-center gap-2"
+            className={`w-1/2 py-4 font-bold text-lg flex items-center justify-center gap-2 ${
+              Number(product.stock || 0) <= 0
+                ? "bg-slate-500 text-white"
+                : "bg-orange-600 text-white"
+            }`}
           >
-            <FaBolt /> Buy Now
+            <FaBolt /> {Number(product.stock || 0) <= 0 ? "Notify Me" : "Buy Now"}
           </button>
         </div>
 

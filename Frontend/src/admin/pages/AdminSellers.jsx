@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAdminAuth } from "../context/AdminAuthContext";
@@ -11,21 +11,22 @@ import {
   FiMail,
   FiCalendar,
   FiShoppingBag,
-  FiUser,
   FiPhone,
+  FiCheckCircle,
+  FiXCircle,
+  FiRefreshCw,
+  FiSend,
 } from "react-icons/fi";
+import VerificationActionModal from "../components/VerificationActionModal";
 
-const BASE_API_URL =
-  import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
+const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
-const getStatusStyle = (status) => {
-  const styles = {
-    APPROVED: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
-    PENDING: "bg-amber-500/10 text-amber-300 border-amber-500/30",
-    REJECTED: "bg-rose-500/10 text-rose-300 border-rose-500/30",
-  };
-  return styles[status] || "bg-slate-700/40 text-slate-300 border-slate-600/30";
-};
+const getStatusStyle = (isVerified) =>
+  isVerified
+    ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+    : "bg-amber-500/10 text-amber-300 border-amber-500/30";
+
+const isExpired = (deadline) => Boolean(deadline && new Date(deadline).getTime() < Date.now());
 
 export default function AdminSellers() {
   const { token } = useAdminAuth();
@@ -36,18 +37,20 @@ export default function AdminSellers() {
   const [limit] = useState(10);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [actionLoadingId, setActionLoadingId] = useState("");
+  const [bulkSending, setBulkSending] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const [modalState, setModalState] = useState({
+    open: false,
+    mode: "",
+    seller: null,
+  });
 
-  useEffect(() => {
-    if (!token) return;
-    fetchSellers(page, search, statusFilter);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, page, statusFilter]);
-
-  const fetchSellers = async (pageNum = 1, q = "", status = "ALL") => {
+  const fetchSellers = async (pageNum = page, q = search, status = statusFilter) => {
     try {
       setLoading(true);
       const params = { page: pageNum, limit };
-      if (q && q.trim()) params.search = q.trim();
+      if (q.trim()) params.search = q.trim();
       if (status !== "ALL") params.status = status;
 
       const res = await axios.get(`${BASE_API_URL}/api/admin/sellers`, {
@@ -64,18 +67,210 @@ export default function AdminSellers() {
     }
   };
 
+  useEffect(() => {
+    if (!token) return;
+    fetchSellers(page, search, statusFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, page, statusFilter]);
+
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     setPage(1);
     fetchSellers(1, search, statusFilter);
   };
 
+  const closeModal = () => {
+    setModalState({ open: false, mode: "", seller: null });
+  };
+
+  const handleVerify = async (seller) => {
+    try {
+      setActionLoadingId(seller._id);
+      await axios.patch(
+        `${BASE_API_URL}/api/admin/sellers/${seller._id}/verification`,
+        { isVerified: true },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setFeedback({
+        type: "success",
+        message: `${seller.fullName || seller.email} verified successfully.`,
+      });
+      await fetchSellers(page, search, statusFilter);
+    } catch (err) {
+      console.error("Seller verification update failed:", err);
+      setFeedback({
+        type: "error",
+        message: err.response?.data?.message || "Failed to update verification status.",
+      });
+    } finally {
+      setActionLoadingId("");
+    }
+  };
+
+  const handleResend = async (seller) => {
+    try {
+      setActionLoadingId(seller._id);
+      const res = await axios.post(
+        `${BASE_API_URL}/api/admin/sellers/${seller._id}/resend-verification`,
+        {},
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      setFeedback({
+        type: "success",
+        message: res.data?.message || `Verification email resent to ${seller.email}.`,
+      });
+      await fetchSellers(page, search, statusFilter);
+    } catch (err) {
+      console.error("Seller resend verification failed:", err);
+      setFeedback({
+        type: "error",
+        message: err.response?.data?.message || "Failed to resend verification email.",
+      });
+    } finally {
+      setActionLoadingId("");
+    }
+  };
+
+  const handleBulkReminder = async () => {
+    try {
+      setBulkSending(true);
+      const res = await axios.post(
+        `${BASE_API_URL}/api/admin/sellers/reminders`,
+        {
+          search,
+          status: statusFilter === "VERIFIED" ? "UNVERIFIED" : statusFilter,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      setFeedback({
+        type: "success",
+        message: res.data?.message || "Verification reminders sent successfully.",
+      });
+      await fetchSellers(page, search, statusFilter);
+    } catch (err) {
+      console.error("Bulk seller reminder failed:", err);
+      setFeedback({
+        type: "error",
+        message: err.response?.data?.message || "Failed to send verification reminders.",
+      });
+    } finally {
+      setBulkSending(false);
+    }
+  };
+
+  const handleModalSubmit = async ({ reason, sendEmail }) => {
+    const seller = modalState.seller;
+    if (!seller) return;
+
+    try {
+      setActionLoadingId(seller._id);
+
+      if (modalState.mode === "unverify") {
+        await axios.patch(
+          `${BASE_API_URL}/api/admin/sellers/${seller._id}/verification`,
+          {
+            isVerified: false,
+            reason,
+            sendVerificationEmail: sendEmail,
+          },
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        setFeedback({
+          type: "success",
+          message: sendEmail
+            ? "Seller marked unverified and fresh verification email sent."
+            : "Seller marked unverified successfully.",
+        });
+      }
+
+      if (modalState.mode === "delete") {
+        await axios.delete(`${BASE_API_URL}/api/admin/sellers/${seller._id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          data: { reason },
+        });
+        setFeedback({
+          type: "success",
+          message: `${seller.fullName || seller.email} deleted successfully.`,
+        });
+      }
+
+      closeModal();
+      await fetchSellers(page, search, statusFilter);
+    } catch (err) {
+      console.error("Seller admin action failed:", err);
+      setFeedback({
+        type: "error",
+        message: err.response?.data?.message || "Failed to complete admin action.",
+      });
+    } finally {
+      setActionLoadingId("");
+    }
+  };
+
   const pages = Math.max(1, Math.ceil(total / limit));
-  const totalApproved = sellers.filter((s) => s.status === "APPROVED").length;
+  const verifiedCount = useMemo(
+    () => sellers.filter((seller) => seller.isVerified).length,
+    [sellers]
+  );
+  const expiredCount = useMemo(
+    () =>
+      sellers.filter(
+        (seller) => !seller.isVerified && isExpired(seller.verificationDeadline)
+      ).length,
+    [sellers]
+  );
+
+  const renderActions = (seller) => {
+    const busy = actionLoadingId === seller._id;
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            seller.isVerified
+              ? setModalState({ open: true, mode: "unverify", seller })
+              : handleVerify(seller)
+          }
+          className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition ${
+            seller.isVerified
+              ? "bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20"
+              : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
+          } disabled:opacity-50`}
+        >
+          {busy ? "Updating..." : seller.isVerified ? "Mark Unverified" : "Verify"}
+        </button>
+        {!seller.isVerified ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => handleResend(seller)}
+            className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 transition disabled:opacity-50 inline-flex items-center gap-1"
+          >
+            <FiSend size={12} />
+            Resend Mail
+          </button>
+        ) : null}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setModalState({ open: true, mode: "delete", seller })}
+          className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 transition disabled:opacity-50"
+        >
+          Delete
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4 w-full">
-      {/* Header */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center shadow-lg flex-shrink-0">
@@ -86,28 +281,50 @@ export default function AdminSellers() {
               Sellers Management
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Onboarded sellers and approval status
+              Seller verification review, reminders, and admin controls
             </p>
           </div>
         </div>
 
-        {/* Stats */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <div className="px-3 py-1.5 rounded-lg bg-slate-900/70 border border-slate-700 text-slate-300">
             <span className="text-slate-500">Total:</span>{" "}
             <span className="font-semibold text-teal-300">{total}</span>
           </div>
           <div className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/40 text-emerald-300">
-            <span className="text-emerald-400/80">Approved:</span>{" "}
-            <span className="font-bold">{totalApproved}</span>
+            <span className="text-emerald-400/80">Verified:</span>{" "}
+            <span className="font-bold">{verifiedCount}</span>
+          </div>
+          <div className="px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-300">
+            <span className="text-amber-200/80">Expired:</span>{" "}
+            <span className="font-bold">{expiredCount}</span>
           </div>
           <div className="px-3 py-1.5 rounded-lg bg-slate-900/70 border border-slate-700 text-slate-400">
             Page {page}/{pages}
           </div>
+          <button
+            type="button"
+            onClick={handleBulkReminder}
+            disabled={bulkSending || loading}
+            className="px-3 py-1.5 rounded-lg bg-cyan-600/15 border border-cyan-500/40 text-cyan-300 font-semibold hover:bg-cyan-600/25 transition disabled:opacity-50"
+          >
+            {bulkSending ? "Sending..." : "Send Reminders"}
+          </button>
         </div>
       </div>
 
-      {/* Search & Filter */}
+      {feedback ? (
+        <div
+          className={`rounded-xl border px-4 py-3 text-sm ${
+            feedback.type === "success"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+              : "border-rose-500/30 bg-rose-500/10 text-rose-300"
+          }`}
+        >
+          {feedback.message}
+        </div>
+      ) : null}
+
       <motion.form
         onSubmit={handleSearchSubmit}
         initial={{ opacity: 0, y: 10 }}
@@ -119,15 +336,15 @@ export default function AdminSellers() {
             <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input
               type="text"
-              placeholder="Search by name, email or shop..."
+              placeholder="Search by seller name, email or shop..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-slate-800/60 border border-slate-700 rounded-lg pl-10 pr-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50 transition"
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div className="relative">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="relative sm:col-span-2">
               <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <select
                 value={statusFilter}
@@ -137,10 +354,9 @@ export default function AdminSellers() {
                 }}
                 className="w-full bg-slate-800/60 border border-slate-700 rounded-lg pl-10 pr-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500/50 transition appearance-none"
               >
-                <option value="ALL">All Status</option>
-                <option value="PENDING">Pending</option>
-                <option value="APPROVED">Approved</option>
-                <option value="REJECTED">Rejected</option>
+                <option value="ALL">All Sellers</option>
+                <option value="VERIFIED">Verified Only</option>
+                <option value="UNVERIFIED">Unverified Only</option>
               </select>
             </div>
 
@@ -154,7 +370,6 @@ export default function AdminSellers() {
         </div>
       </motion.form>
 
-      {/* Desktop Table (>= 768px) */}
       <motion.div
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
@@ -166,16 +381,18 @@ export default function AdminSellers() {
               <tr>
                 <th className="px-4 py-3 text-left text-slate-400 font-medium">Seller</th>
                 <th className="px-4 py-3 text-left text-slate-400 font-medium">Email</th>
-                <th className="px-4 py-3 text-left text-slate-400 font-medium">Shop Name</th>
+                <th className="px-4 py-3 text-left text-slate-400 font-medium">Shop</th>
                 <th className="px-4 py-3 text-left text-slate-400 font-medium">Phone</th>
                 <th className="px-4 py-3 text-left text-slate-400 font-medium">Status</th>
+                <th className="px-4 py-3 text-left text-slate-400 font-medium">Deadline</th>
                 <th className="px-4 py-3 text-left text-slate-400 font-medium">Joined</th>
+                <th className="px-4 py-3 text-left text-slate-400 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-5 h-5 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
                       <span>Loading sellers...</span>
@@ -184,15 +401,15 @@ export default function AdminSellers() {
                 </tr>
               ) : sellers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                     <FiUsers size={32} className="text-slate-600 mx-auto mb-2" />
                     <p>No sellers found</p>
                   </td>
                 </tr>
               ) : (
-                sellers.map((s, idx) => (
+                sellers.map((seller, idx) => (
                   <motion.tr
-                    key={s._id}
+                    key={seller._id}
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.02 * idx }}
@@ -201,25 +418,65 @@ export default function AdminSellers() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                          {s.fullName?.[0]?.toUpperCase() || "S"}
+                          {seller.fullName?.[0]?.toUpperCase() || "S"}
                         </div>
                         <div>
-                          <p className="font-medium text-slate-100">{s.fullName || "Unknown"}</p>
-                          <p className="text-[11px] text-slate-500 font-mono">ID: {s._id?.slice(-6)}</p>
+                          <p className="font-medium text-slate-100">{seller.fullName || "Unknown"}</p>
+                          <p className="text-[11px] text-slate-500 font-mono">
+                            ID: {seller._id?.slice(-6)}
+                          </p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-300 text-xs max-w-[200px] truncate">{s.email}</td>
-                    <td className="px-4 py-3 text-slate-300">{s.shopName || "-"}</td>
-                    <td className="px-4 py-3 text-slate-300 text-xs">{s.phone || "-"}</td>
+                    <td className="px-4 py-3 text-slate-300 text-xs max-w-[220px] truncate">
+                      {seller.email}
+                    </td>
+                    <td className="px-4 py-3 text-slate-300 text-xs">{seller.shopName || "-"}</td>
+                    <td className="px-4 py-3 text-slate-300 text-xs">{seller.phone || "-"}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${getStatusStyle(s.status)}`}>
-                        {s.status}
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border flex items-center gap-1 w-fit ${getStatusStyle(
+                          seller.isVerified
+                        )}`}
+                      >
+                        {seller.isVerified ? (
+                          <>
+                            <FiCheckCircle size={12} />
+                            Verified
+                          </>
+                        ) : (
+                          <>
+                            <FiXCircle size={12} />
+                            Unverified
+                          </>
+                        )}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-[11px] text-slate-300">
-                      {s.createdAt ? new Date(s.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" }) : "-"}
+                      {seller.isVerified ? (
+                        "-"
+                      ) : seller.verificationDeadline ? (
+                        <span className={isExpired(seller.verificationDeadline) ? "text-amber-300" : ""}>
+                          {new Date(seller.verificationDeadline).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            year: "2-digit",
+                          })}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
                     </td>
+                    <td className="px-4 py-3 text-[11px] text-slate-300">
+                      {seller.createdAt
+                        ? new Date(seller.createdAt).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            year: "2-digit",
+                          })
+                        : "-"}
+                    </td>
+                    <td className="px-4 py-3">{renderActions(seller)}</td>
                   </motion.tr>
                 ))
               )}
@@ -228,19 +485,33 @@ export default function AdminSellers() {
         </div>
 
         <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800 text-xs text-slate-400">
-          <span>Page <span className="font-semibold text-slate-200">{page}</span> of <span className="font-semibold text-slate-200">{pages}</span></span>
+          <span>
+            Page <span className="font-semibold text-slate-200">{page}</span> of{" "}
+            <span className="font-semibold text-slate-200">{pages}</span>
+          </span>
           <div className="flex items-center gap-2">
-            <button type="button" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-900 transition text-slate-300">
-              <FiChevronLeft size={14} />Prev
+            <button
+              type="button"
+              disabled={page === 1}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-900 transition text-slate-300"
+            >
+              <FiChevronLeft size={14} />
+              Prev
             </button>
-            <button type="button" disabled={page === pages} onClick={() => setPage((p) => Math.min(pages, p + 1))} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-900 transition text-slate-300">
-              Next<FiChevronRight size={14} />
+            <button
+              type="button"
+              disabled={page === pages}
+              onClick={() => setPage((prev) => Math.min(pages, prev + 1))}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-900 transition text-slate-300"
+            >
+              Next
+              <FiChevronRight size={14} />
             </button>
           </div>
         </div>
       </motion.div>
 
-      {/* Mobile Card View */}
       <div className="md:hidden">
         <AnimatePresence>
           {loading ? (
@@ -256,70 +527,135 @@ export default function AdminSellers() {
             </div>
           ) : (
             <div className="space-y-3">
-              {sellers.map((s, idx) => (
-                <motion.div key={s._id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 backdrop-blur-xl shadow-lg">
+              {sellers.map((seller, idx) => (
+                <motion.div
+                  key={seller._id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.04 }}
+                  className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 backdrop-blur-xl shadow-lg"
+                >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
-                                           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white font-bold text-lg shadow-md flex-shrink-0">
-                        {s.fullName?.[0]?.toUpperCase() || "S"}
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white font-bold text-lg shadow-md flex-shrink-0">
+                        {seller.fullName?.[0]?.toUpperCase() || "S"}
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-slate-100">{s.fullName || "Unknown"}</p>
-                        <p className="text-[10px] text-slate-500 font-mono">ID: {s._id?.slice(-8)}</p>
+                        <p className="text-sm font-semibold text-slate-100">
+                          {seller.fullName || "Unknown"}
+                        </p>
+                        <p className="text-[10px] text-slate-500 font-mono">
+                          ID: {seller._id?.slice(-8)}
+                        </p>
                       </div>
                     </div>
-                    <span className={`px-2 py-1 rounded-lg text-[9px] font-bold border ${getStatusStyle(s.status)}`}>{s.status}</span>
+                    <span
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border flex items-center gap-1 ${getStatusStyle(
+                        seller.isVerified
+                      )}`}
+                    >
+                      {seller.isVerified ? <FiCheckCircle size={10} /> : <FiXCircle size={10} />}
+                      {seller.isVerified ? "Verified" : "Unverified"}
+                    </span>
                   </div>
 
                   <div className="space-y-2 mb-3">
                     <div className="flex items-center gap-2 text-xs">
                       <FiMail className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                      <span className="text-slate-300 truncate">{s.email}</span>
+                      <span className="text-slate-300 truncate">{seller.email}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
                       <FiShoppingBag className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                      <span className="text-slate-400">{s.shopName || "No shop"}</span>
+                      <span className="text-slate-400">{seller.shopName || "No shop name"}</span>
                     </div>
-                    {s.phone && (
+                    {seller.phone && (
                       <div className="flex items-center gap-2 text-xs">
                         <FiPhone className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                        <span className="text-slate-400">{s.phone}</span>
+                        <span className="text-slate-400">{seller.phone}</span>
                       </div>
                     )}
                     <div className="flex items-center gap-2 text-xs">
                       <FiCalendar className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
                       <span className="text-slate-500 text-[11px]">
-                        Joined {s.createdAt ? new Date(s.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "-"}
+                        Joined{" "}
+                        {seller.createdAt
+                          ? new Date(seller.createdAt).toLocaleDateString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })
+                          : "-"}
                       </span>
                     </div>
+                    {!seller.isVerified && seller.verificationDeadline && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <FiRefreshCw className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                        <span
+                          className={`text-[11px] ${
+                            isExpired(seller.verificationDeadline) ? "text-amber-300" : "text-slate-400"
+                          }`}
+                        >
+                          Deadline{" "}
+                          {new Date(seller.verificationDeadline).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  <button className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all">
-                    <FiUser size={14} />View Profile
-                  </button>
+                  {renderActions(seller)}
                 </motion.div>
               ))}
 
-              {sellers.length > 0 && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 backdrop-blur-xl">
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-3">
-                    <span>Page <span className="font-semibold text-slate-200">{page}</span> / <span className="font-semibold text-slate-200">{pages}</span></span>
-                    <span className="text-[10px]">{sellers.length} of {total}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button type="button" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-900 active:scale-95 transition text-xs font-semibold text-slate-300">
-                      <FiChevronLeft size={14} />Previous
-                    </button>
-                    <button type="button" disabled={page === pages} onClick={() => setPage((p) => Math.min(pages, p + 1))} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-900 active:scale-95 transition text-xs font-semibold text-slate-300">
-                      Next<FiChevronRight size={14} />
-                    </button>
-                  </div>
-                </motion.div>
-              )}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 backdrop-blur-xl"
+              >
+                <div className="flex items-center justify-between text-[11px] text-slate-400 mb-3">
+                  <span>
+                    Page <span className="font-semibold text-slate-200">{page}</span> /{" "}
+                    <span className="font-semibold text-slate-200">{pages}</span>
+                  </span>
+                  <span className="text-[10px]">{sellers.length} of {total}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={page === 1}
+                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-900 active:scale-95 transition text-xs font-semibold text-slate-300"
+                  >
+                    <FiChevronLeft size={14} />
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={page === pages}
+                    onClick={() => setPage((prev) => Math.min(pages, prev + 1))}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-900 active:scale-95 transition text-xs font-semibold text-slate-300"
+                  >
+                    Next
+                    <FiChevronRight size={14} />
+                  </button>
+                </div>
+              </motion.div>
             </div>
           )}
         </AnimatePresence>
       </div>
+
+      <VerificationActionModal
+        open={modalState.open}
+        mode={modalState.mode}
+        label={modalState.seller?.fullName || modalState.seller?.email || ""}
+        loading={Boolean(actionLoadingId)}
+        onClose={closeModal}
+        onSubmit={handleModalSubmit}
+      />
     </div>
   );
 }

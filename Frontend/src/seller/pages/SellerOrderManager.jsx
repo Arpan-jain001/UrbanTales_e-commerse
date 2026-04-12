@@ -10,6 +10,13 @@ const API = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 const ORDER_STATUSES = [
   "Pending", "Placed", "Picked Up", "Out for Delivery", "Delivered", "Cancelled"
 ];
+const RETURN_STATUSES = [
+  "Requested",
+  "Pickup Scheduled",
+  "Picked Up",
+  "Refund Initiated",
+  "Refunded",
+];
 
 export default function SellerOrderManager() {
   const { token } = useSellerAuth();
@@ -48,6 +55,35 @@ export default function SellerOrderManager() {
       alert("Order item status updated!");
     } catch {
       alert("Status update failed!");
+    }
+  };
+
+  const updateReturnStatus = async (orderId, returnStatus) => {
+    try {
+      await axios.put(
+        `${API}/api/sellers/orders/${orderId}/return-status`,
+        { returnStatus },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setOrders((prevOrders) =>
+        prevOrders.map((order) =>
+          order._id === orderId
+            ? {
+                ...order,
+                returnStatus,
+                orderStatus: returnStatus === "Refunded" ? "Returned" : order.orderStatus,
+                items:
+                  returnStatus === "Refunded"
+                    ? order.items.map((item) => ({ ...item, status: "Returned" }))
+                    : order.items,
+              }
+            : order
+        )
+      );
+      alert("Return status updated!");
+    } catch (error) {
+      console.error("Return status update failed:", error);
+      alert("Return status update failed!");
     }
   };
 
@@ -94,6 +130,38 @@ export default function SellerOrderManager() {
                   </Grid>
                 ))}
               </Grid>
+              {order.returnStatus ? (
+                <Box
+                  display="flex"
+                  flexDirection={{ xs: "column", md: "row" }}
+                  alignItems={{ xs: "stretch", md: "center" }}
+                  gap={2}
+                  mb={2}
+                  p={2}
+                  border="1px solid #f5d27a"
+                  borderRadius="12px"
+                  bgcolor="#fff8e6"
+                >
+                  <Typography fontWeight={700} color="#8a5b00">
+                    Return Flow
+                  </Typography>
+                  <Select
+                    value={order.returnStatus}
+                    size="small"
+                    onChange={(e) => updateReturnStatus(order._id, e.target.value)}
+                    sx={{ minWidth: 220, bgcolor: "#fff" }}
+                  >
+                    {RETURN_STATUSES.map((status) => (
+                      <MenuItem key={status} value={status}>
+                        {status}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  <Typography fontSize={13} color="#8a5b00">
+                    Customer reason: <b>{order.returnReason || "Not provided"}</b>
+                  </Typography>
+                </Box>
+              ) : null}
               {/* Tracker only for first item */}
               <SellerOrderStatusTracker status={order.items[0]?.status || order.orderStatus} />
             </Card>

@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 
-// Helper to generate clean username
 function makeUsername(fullName) {
   if (!fullName) return "";
   const base = fullName
@@ -15,8 +14,7 @@ function makeUsername(fullName) {
   return base ? `${base}-${rand}` : "";
 }
 
-const BASE_API_URL =
-  import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
+const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
 export default function SellerSignup() {
   const [formData, setFormData] = useState({
@@ -32,14 +30,13 @@ export default function SellerSignup() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Live username generation
   useEffect(() => {
     setUsername(makeUsername(formData.fullName));
   }, [formData.fullName]);
 
   const handleChange = (e) =>
-    setFormData((f) => ({
-      ...f,
+    setFormData((prev) => ({
+      ...prev,
       [e.target.name]: e.target.value,
     }));
 
@@ -48,6 +45,7 @@ export default function SellerSignup() {
     setError("");
     setSuccess("");
     setLoading(true);
+
     const { fullName, email, phone, password, confirmPassword } = formData;
 
     if (!fullName || !email || !phone || !password || !confirmPassword) {
@@ -55,6 +53,7 @@ export default function SellerSignup() {
       setLoading(false);
       return;
     }
+
     if (password !== confirmPassword) {
       setError("Passwords don't match");
       setLoading(false);
@@ -62,39 +61,36 @@ export default function SellerSignup() {
     }
 
     try {
-      const { data } = await axios.post(
-        `${BASE_API_URL}/api/sellers/auth/signup`,
-        {
-          fullName,
-          username,
-          email,
-          phone,
-          password,
-        }
-      );
+      const { data } = await axios.post(`${BASE_API_URL}/api/sellers/auth/signup`, {
+        fullName,
+        username,
+        email,
+        phone,
+        password,
+      });
+
       setSuccess(
-        `Signup successful! Your username is: "${data.seller.username}" (cannot be changed)`
+        `Signup successful! Your username is: "${data.seller.username}". Please verify your seller account first.`
       );
 
-      // ✅ Friendly note about spam folder
       setTimeout(() => {
         setSuccess(
-          `Signup successful! Your username is: "${data.seller.username}". 
-Welcome email sent to ${email}. ⚠️ If you don’t see it, please check your Spam or Promotions folder.`
+          `Verification email sent to ${email}. Please use the OTP or verification link from that email. Welcome email will be sent only after verification.`
         );
       }, 500);
 
       setTimeout(() => {
-        navigate("/sellerlogin");
+        navigate("/seller/verify-account", {
+          state: { email: data.email || email },
+        });
       }, 3500);
     } catch (err) {
       setError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          "Signup failed."
+        err.response?.data?.error || err.response?.data?.message || "Signup failed."
       );
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -105,7 +101,6 @@ Welcome email sent to ${email}. ⚠️ If you don’t see it, please check your 
         transition={{ duration: 0.7, type: "spring" }}
         className="w-full max-w-3xl flex flex-col md:flex-row bg-white shadow-2xl rounded-3xl overflow-hidden"
       >
-        {/* Left - Form */}
         <motion.div
           initial={{ x: -50, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
@@ -214,7 +209,6 @@ Welcome email sent to ${email}. ⚠️ If you don’t see it, please check your 
           </form>
         </motion.div>
 
-        {/* Right - Animated Image */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}

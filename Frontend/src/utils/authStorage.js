@@ -1,30 +1,14 @@
-export const saveUserAuth = (token, user) => {
-  localStorage.setItem("isLoggedIn", "true");
-  localStorage.setItem("token", token);
-  localStorage.setItem("user", JSON.stringify(user));
-  localStorage.setItem("userId", user?._id || user?.id || "");
-  sessionStorage.setItem("token", token);
-  sessionStorage.setItem("user", JSON.stringify(user));
-};
+import { clearAuthSession, getAuthToken, getAuthUser, saveAuthSession } from "./authSession";
 
-export const clearUserAuth = () => {
-  localStorage.removeItem("isLoggedIn");
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
-  localStorage.removeItem("userId");
-  sessionStorage.removeItem("token");
-  sessionStorage.removeItem("user");
-};
+export const saveUserAuth = (token, user, options = {}) =>
+  saveAuthSession("user", {
+    token,
+    user,
+    remember: options.remember !== false,
+  });
 
-export const getStoredUser = () => {
-  const raw = localStorage.getItem("user") || sessionStorage.getItem("user");
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-};
+export const clearUserAuth = () => clearAuthSession("user");
 
-export const getStoredUserToken = () =>
-  localStorage.getItem("token") || sessionStorage.getItem("token") || "";
+export const getStoredUser = () => getAuthUser("user");
+
+export const getStoredUserToken = () => getAuthToken("user");

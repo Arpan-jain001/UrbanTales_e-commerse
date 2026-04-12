@@ -1,16 +1,10 @@
-import { initializeApp } from "firebase/app";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { SELLER_FIREBASE_CONFIG } from "../src/config/appConfig.js";
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_SELLER_FIREBASE_APIKEY,
-  authDomain: import.meta.env.VITE_SELLER_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_SELLER_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_SELLER_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_SELLER_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_SELLER_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_SELLER_FIREBASE_MEASUREMENT_ID,
-};
+const firebaseSellerApp = getApps().some((app) => app.name === "sellerApp")
+  ? getApp("sellerApp")
+  : initializeApp(SELLER_FIREBASE_CONFIG, "sellerApp");
 
-const firebaseSellerApp = initializeApp(firebaseConfig, "sellerApp");
 export const sellerAuth = getAuth(firebaseSellerApp);
 export const sellerProvider = new GoogleAuthProvider();

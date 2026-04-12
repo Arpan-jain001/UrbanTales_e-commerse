@@ -98,10 +98,48 @@ export default function Category() {
     setFilteredProducts(products);
   };
 
+  const requestNotifyMe = async (product, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login to request a stock notification.");
+      navigate("/login");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${BASE_API_URL}/api/stock-alerts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ productId: product._id }),
+      });
+      const data = await res.json();
+      alert(data.message || "We will notify you when this product is back in stock.");
+    } catch (err) {
+      console.error("Notify me request failed:", err);
+      alert("Unable to subscribe for stock alerts right now.");
+    }
+  };
+
   // Add to cart with login check + token invalid handling
   const addToCart = async (product, e) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (Number(product.stock || 0) <= 0) {
+      await requestNotifyMe(product, e);
+      return;
+    }
+
+    if (product?.availableSizes?.length || product?.availableColors?.length) {
+      navigate(`/product/${product._id}`);
+      return;
+    }
 
     const token = localStorage.getItem("token");
     if (!token) {
@@ -121,6 +159,7 @@ export default function Category() {
       price: product.price,
       image: mainImage,
       qty: 1,
+      sellerId: product.sellerId,
     };
 
     try {
@@ -148,51 +187,84 @@ export default function Category() {
     }
   };
 
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const fetchWishlist = async () => {
+      try {
+        const res = await fetch(`${BASE_API_URL}/api/wishlist`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (res.ok && Array.isArray(data.wishlist)) {
+          setWishlist(data.wishlist.map((item) => item._id || item.id || item));
+        } else if (data.message === "Invalid token") {
+          localStorage.removeItem("token");
+          navigate("/login");
+        }
+      } catch (err) {
+        console.error("Failed to load wishlist:", err);
+      }
+    };
+
+    fetchWishlist();
+  }, [navigate]);
+
   // Wishlist toggle (optionally adds to cart for logged in user)
   const toggleWishlist = async (product, e) => {
     e.preventDefault();
     e.stopPropagation();
 
     const productId = product._id;
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login to manage your wishlist.");
+      navigate("/login");
+      return;
+    }
 
     if (wishlist.includes(productId)) {
-      setWishlist(wishlist.filter((id) => id !== productId));
-    } else {
-      setWishlist([...wishlist, productId]);
-
-      const token = localStorage.getItem("token");
-      if (token) {
-        const mainImage =
-          product.images && product.images.length > 0
-            ? product.images[0]
-            : product.image;
-
-        const item = {
-          id: product._id,
-          name: product.name,
-          price: product.price,
-          image: mainImage,
-          qty: 1,
-        };
-
-        try {
-          const res = await fetch(`${BASE_API_URL}/api/cart/add`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ item }),
-          });
-
-          const data = await res.json();
-          if (res.status === 401 || res.status === 403 || data.message === "Invalid token") {
-            localStorage.removeItem("token");
-            navigate("/login");
-          }
-        } catch {
-          // silent failure
+      try {
+        const res = await fetch(`${BASE_API_URL}/api/wishlist/${productId}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setWishlist((prev) => prev.filter((id) => id !== productId));
+          alert(data.message || "Removed from wishlist");
+        } else if (data.message === "Invalid token") {
+          localStorage.removeItem("token");
+          navigate("/login");
         }
+      } catch {
+        alert("Unable to update wishlist. Please try again.");
+      }
+    } else {
+      try {
+        const res = await fetch(`${BASE_API_URL}/api/wishlist`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ productId }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setWishlist((prev) => [...prev, productId]);
+          alert(data.message || "Added to wishlist");
+        } else if (data.message === "Invalid token") {
+          localStorage.removeItem("token");
+          navigate("/login");
+        } else {
+          alert(data.message || "Unable to add to wishlist.");
+        }
+      } catch {
+        alert("Unable to update wishlist. Please try again.");
       }
     }
   };
@@ -586,12 +658,23 @@ export default function Category() {
                             </span>
                           )}
                         </div>
+                        {Number(product.stock || 0) <= 0 && (
+                          <div className="inline-flex items-center rounded-full bg-rose-500/10 border border-rose-500/20 px-3 py-1 text-xs text-rose-600 font-semibold mb-3">
+                            Out of stock
+                          </div>
+                        )}
 
                         <motion.button
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={(e) => addToCart(product, e)}
-                          className="w-full bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white py-3 rounded-xl font-bold hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2 relative overflow-hidden group/btn"
+                          whileHover={{ scale: Number(product.stock || 0) <= 0 ? 1 : 1.02 }}
+                          whileTap={{ scale: Number(product.stock || 0) <= 0 ? 1 : 0.98 }}
+                          onClick={(e) =>
+                            Number(product.stock || 0) <= 0 ? requestNotifyMe(product, e) : addToCart(product, e)
+                          }
+                          className={`w-full ${
+                            Number(product.stock || 0) <= 0
+                              ? "bg-slate-500 text-white"
+                              : "bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white hover:shadow-xl"
+                          } py-3 rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 relative overflow-hidden group/btn`}
                         >
                           <motion.div
                             className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
@@ -600,7 +683,9 @@ export default function Category() {
                             transition={{ duration: 0.6 }}
                           />
                           <FaShoppingCart className="relative z-10" />
-                          <span className="relative z-10">Add to Cart</span>
+                          <span className="relative z-10">
+                            {Number(product.stock || 0) <= 0 ? "Notify Me" : "Add to Cart"}
+                          </span>
                         </motion.button>
                       </div>
                     </motion.div>

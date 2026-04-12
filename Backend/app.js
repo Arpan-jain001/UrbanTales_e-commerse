@@ -1,5 +1,5 @@
 import express from "express";
-import dotenv from "dotenv";
+// import dotenv from "dotenv";
 import cors from "cors";
 import fileUpload from "express-fileupload";
 import connectDB from "./models/db.js";
@@ -28,9 +28,12 @@ import adminSellersRoutes from "./routes/adminSellersRoutes.js";
 import adminUsersRoutes from "./routes/adminUsersRoutes.js";
 import adminOrdersRoutes from "./routes/adminOrdersRoutes.js";
 import adminNotificationsRoutes from "./routes/adminNotificationsRoutes.js";
+import wishlistRoutes from "./routes/wishlistRoutes.js";
+import stockAlertRoutes from "./routes/stockAlertRoutes.js";
+import giftCardRoutes from "./routes/giftCardRoutes.js";
 import { startVerificationScheduler } from "./utils/verificationScheduler.js";
 
-dotenv.config();
+// dotenv.config();
 const app = express();
 
 app.use(cors());
@@ -59,6 +62,9 @@ app.use("/api/sellers/notifications", sellerNotificationRoutes);
 app.use("/api/razorpay", razorpayRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/wishlist", wishlistRoutes);
+app.use("/api/stock-alerts", stockAlertRoutes);
+app.use("/api/gift-cards", giftCardRoutes);
 app.use("/api/users", userProfileRoutes);
 app.use("/api/admin", adminAuthRoutes);
 app.use("/api/admin/products", adminProductsRoutes);

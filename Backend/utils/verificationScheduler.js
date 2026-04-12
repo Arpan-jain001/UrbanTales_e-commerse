@@ -9,14 +9,14 @@ import {
 
 let schedulerStarted = false;
 
-async function processModel(Model, actor) {
+async function processModel(Model, actor, forceSend = false) {
   const accounts = await Model.find({
     isVerified: { $ne: true },
     email: { $exists: true, $ne: "" },
   });
 
   for (const account of accounts) {
-    if (!shouldSendVerificationReminder(account)) {
+    if (!forceSend && !shouldSendVerificationReminder(account)) {
       continue;
     }
 
@@ -46,15 +46,15 @@ export function startVerificationScheduler() {
 
   schedulerStarted = true;
 
-  const run = async () => {
+  const run = async (forceSend = false) => {
     try {
-      await processModel(User, "user");
-      await processModel(Seller, "seller");
+      await processModel(User, "user", forceSend);
+      await processModel(Seller, "seller", forceSend);
     } catch (error) {
       console.error("Verification scheduler failed:", error.message);
     }
   };
 
-  setTimeout(run, 15 * 1000);
-  setInterval(run, 6 * 60 * 60 * 1000);
+  setTimeout(() => run(true), 15 * 1000);
+  setInterval(() => run(false), 6 * 60 * 60 * 1000);
 }

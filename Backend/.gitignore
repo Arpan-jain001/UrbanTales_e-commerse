@@ -4,6 +4,9 @@ node_modules/
 # Environment variables file
 
 .env
+.env.example
+serviceAccountKey.json
+serviceAccount.seller.json
 
 # Logs
 logs

@@ -1,30 +1,84 @@
 import Product from "../models/product.js";
 import Order from "../models/Order.js";
+import StockAlert from "../models/StockAlert.js";
 
 export const stats = async (req, res) => {
   try {
-    const sellerId = req.seller._id;
-    const products = await Product.countDocuments({ sellerId });
-    const sellerProducts = await Product.find({ sellerId }, { _id: 1 });
-    const sellerProductIds = sellerProducts.map(p => String(p._id));
-    const orders = await Order.find({ 'items.id': { $in: sellerProductIds } });
+    const sellerId = String(req.seller._id);
+    const sellerProducts = await Product.find({ sellerId: req.seller._id }).select(
+      "_id stock"
+    );
+    const sellerProductIds = sellerProducts.map((product) => String(product._id));
+    const orders = await Order.find({ "items.sellerId": sellerId }).lean();
 
-    const sold = orders.reduce((acc, order) =>
-      acc +
-      order.items
-        .filter(i => sellerProductIds.includes(i.id) && i.status === "Delivered")
-        .reduce((sum, i) => sum + i.qty, 0),
-      0
-    );
-    const earnings = orders.reduce((acc, order) =>
-      acc +
-      order.items
-        .filter(i => sellerProductIds.includes(i.id) && i.status === "Delivered")
-        .reduce((sum, i) => sum + i.qty * i.price, 0),
-      0
-    );
-    res.json({ products, sold, earnings });
+    let soldUnits = 0;
+    let grossEarnings = 0;
+    let pendingOrders = 0;
+    let activeReturnRequests = 0;
+
+    for (const order of orders) {
+      const sellerItems = (order.items || []).filter(
+        (item) => String(item.sellerId || "") === sellerId
+      );
+
+      if (!sellerItems.length) {
+        continue;
+      }
+
+      let hasPendingItem = false;
+      for (const item of sellerItems) {
+        if (item.status === "Delivered") {
+          soldUnits += Number(item.qty || 0);
+          grossEarnings += Number(item.qty || 0) * Number(item.price || 0);
+        }
+
+        if (
+          ["Pending", "Placed", "Picked Up", "Out for Delivery", "Shipped"].includes(
+            item.status
+          )
+        ) {
+          hasPendingItem = true;
+        }
+      }
+
+      if (hasPendingItem) {
+        pendingOrders += 1;
+      }
+
+      if (
+        ["Requested", "Pickup Scheduled", "Picked Up", "Refund Initiated"].includes(
+          order.returnStatus
+        )
+      ) {
+        activeReturnRequests += 1;
+      }
+    }
+
+    const lowStockProducts = sellerProducts.filter(
+      (product) => Number(product.stock || 0) > 0 && Number(product.stock || 0) <= 5
+    ).length;
+    const outOfStockProducts = sellerProducts.filter(
+      (product) => Number(product.stock || 0) <= 0
+    ).length;
+    const stockRequestCount = sellerProductIds.length
+      ? await StockAlert.countDocuments({
+          productId: { $in: sellerProductIds },
+          active: true,
+        })
+      : 0;
+
+    return res.json({
+      products: sellerProducts.length,
+      lowStockProducts,
+      outOfStockProducts,
+      soldUnits,
+      grossEarnings,
+      pendingOrders,
+      activeReturnRequests,
+      stockRequestCount,
+    });
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch seller stats." });
+    console.error("Seller analytics stats error:", err);
+    return res.status(500).json({ error: "Failed to fetch seller stats." });
   }
 };

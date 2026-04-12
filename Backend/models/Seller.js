@@ -24,6 +24,7 @@ const sellerSchema = new mongoose.Schema(
     lastVerificationEmailSentAt: { type: Date, default: null },
     verificationReminderCount: { type: Number, default: 0 },
     welcomeEmailSentAt: { type: Date, default: null },
+    adminUnverifyReason: { type: String, default: "" },
 
     otp: { type: String, default: null },
     otpExpiry: { type: Date, default: null },

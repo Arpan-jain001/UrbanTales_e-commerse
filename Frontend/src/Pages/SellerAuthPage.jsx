@@ -9,7 +9,8 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../Components/Navbar";
 import Footer from "../Components/Footer";
 
-const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID_HERE";
+const BASE_API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID_SELLER || "YOUR_GOOGLE_CLIENT_ID_HERE";
 
 const SellerLogin = () => {
   const navigate = useNavigate();
@@ -72,8 +73,8 @@ const SellerLogin = () => {
     e.preventDefault();
     setError("");
     const url = isSignup
-      ? "http://localhost:3000/api/sellers/signup"
-      : "http://localhost:3000/api/sellers/login";
+      ? `${BASE_API_URL}/api/sellers/signup`
+      : `${BASE_API_URL}/api/sellers/login`;
 
     try {
       const { data } = await axios.post(url, formData);
@@ -94,7 +95,7 @@ const SellerLogin = () => {
   const handleGoogleSuccess = async (credentialResponse) => {
     try {
       const response = await axios.post(
-        "http://localhost:3000/api/auth/google-seller",
+        `${BASE_API_URL}/api/auth/google-seller`,
         {
           token: credentialResponse.credential
         }
