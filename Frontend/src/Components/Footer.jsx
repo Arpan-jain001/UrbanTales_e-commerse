@@ -165,7 +165,7 @@ const Footer = () => {
   <span className="text-yellow-400 text-lg">&#11088;</span> Advertise
 </Link>
 
-<Link to="/under-construction" className="flex items-center gap-2 cursor-pointer hover:underline">
+<Link to="/dashboard" className="flex items-center gap-2 cursor-pointer hover:underline">
   <span className="text-yellow-400 text-lg">&#127873;</span> Gift Cards
 </Link>
 
