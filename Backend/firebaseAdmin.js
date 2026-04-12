@@ -1,16 +1,18 @@
 import { initializeApp, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import fs from "fs";
+import dotenv from "dotenv";
 
-// Read JSON file manually
-const serviceAccount = JSON.parse(
-  fs.readFileSync(new URL("./serviceAccountKey.json", import.meta.url))
-);
+dotenv.config();
+
+// Parse env
+const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+
+// 🔥 FIX: replace \\n → \n
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
 
 // Initialize Firebase
 initializeApp({
   credential: cert(serviceAccount),
 });
 
-// Export auth
 export const adminAuth = getAuth();
