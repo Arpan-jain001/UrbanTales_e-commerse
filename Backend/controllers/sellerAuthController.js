@@ -1,6 +1,6 @@
-import jwt from "jsonwebtoken";
+﻿import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { OAuth2Client } from "google-auth-library";
+
 import Seller from "../models/Seller.js";
 import { sendSellerOtpMail } from "../utils/SellersendOtpMail.js";
 import { sendSellerWelcomeMail } from "../utils/sendSellerWelcomeMail.js";
@@ -13,8 +13,15 @@ import {
   sendVerificationEmail,
 } from "../utils/verificationService.js";
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+import { sellerAuth } from "../firebaseAdmin.js"; // ✅ IMPORTANT
+
+function normalizeEmail(email) {
+  return String(email || "").toLowerCase().trim();
+}
+
+function normalizeAddress(address) {
+  return Array.isArray(address) ? address : [];
+}
 
 function generateUsername(fullName = "seller") {
   const base = fullName
@@ -72,10 +79,75 @@ async function sendSellerWelcomeMailOnce(seller) {
   await seller.save();
 }
 
+async function createOrUpdateGoogleSeller({ email, name, picture }) {
+  const normalizedEmail = normalizeEmail(email);
+  let seller = await Seller.findOne({ email: normalizedEmail });
+  let shouldSendWelcome = false;
+
+  if (!seller) {
+    seller = await Seller.create({
+      fullName: name || normalizedEmail.split("@")[0],
+      username: await createUniqueUsername(name || "seller"),
+      email: normalizedEmail,
+      phone: "",
+      shopName: "",
+      address: [],
+      bio: "",
+      avatar: picture || "",
+      authProvider: "google",
+      isVerified: true,
+      verifiedAt: new Date(),
+      verificationSource: "google",
+    });
+    shouldSendWelcome = true;
+  } else if (!seller.isVerified) {
+    clearVerificationState(seller, "google");
+    if (!seller.avatar && picture) {
+      seller.avatar = picture;
+    }
+    await seller.save();
+    shouldSendWelcome = true;
+  }
+
+  if (shouldSendWelcome) {
+    await sendSellerWelcomeMailOnce(seller);
+  }
+
+  return seller;
+}
+
+export async function googleSellerAuth(req, res) {
+  try {
+    const tokenId = req.body.tokenId;
+
+    if (!tokenId) {
+      return res.status(400).json({ error: "Token missing" });
+    }
+
+    const decodedToken = await sellerAuth.verifyIdToken(tokenId);
+    const { email, name, picture } = decodedToken;
+
+    if (!email) {
+      return res.status(400).json({ error: "Google account missing email" });
+    }
+
+    const seller = await createOrUpdateGoogleSeller({ email, name, picture });
+    const token = createSellerJwt(seller);
+
+    res.json({
+      token,
+      seller: serializeSeller(seller),
+    });
+  } catch (err) {
+    console.error("Google Seller Auth Error:", err);
+    res.status(400).json({ error: "Google login failed" });
+  }
+}
+
 export async function signup(req, res) {
   try {
     const { fullName, username, email, phone, shopName, address, bio, password } = req.body;
-    const normalizedEmail = String(email || "").toLowerCase().trim();
+    const normalizedEmail = normalizeEmail(email);
 
     const exists = await Seller.findOne({ email: normalizedEmail });
     if (exists) {
@@ -91,7 +163,7 @@ export async function signup(req, res) {
       email: normalizedEmail,
       phone,
       shopName,
-      address,
+      address: normalizeAddress(address),
       bio,
       password: hash,
       authProvider: "local",
@@ -115,7 +187,7 @@ export async function signup(req, res) {
 export async function login(req, res) {
   try {
     const { email, password } = req.body;
-    const normalizedEmail = String(email || "").toLowerCase().trim();
+    const normalizedEmail = normalizeEmail(email);
     const seller = await Seller.findOne({ email: normalizedEmail });
 
     if (!seller) {
@@ -225,7 +297,7 @@ export async function verifyAccount(req, res) {
 export async function resendVerification(req, res) {
   try {
     const { email } = req.body;
-    const seller = await Seller.findOne({ email: String(email || "").toLowerCase().trim() });
+    const seller = await Seller.findOne({ email: normalizeEmail(email) });
 
     if (!seller) {
       return res.status(404).json({ error: "Seller not found" });
@@ -254,73 +326,10 @@ export async function resendVerification(req, res) {
   }
 }
 
-export async function googleSellerAuth(req, res) {
-  try {
-    const tokenId = req.body.tokenId || req.body.credential;
-    if (!tokenId || !googleClient) {
-      return res.status(400).json({ error: "Google login is not configured" });
-    }
-
-    const ticket = await googleClient.verifyIdToken({
-      idToken: tokenId,
-      audience: GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    const { email, name, picture } = payload;
-
-    if (!email) {
-      return res.status(400).json({ error: "Google account missing email" });
-    }
-
-    const normalizedEmail = String(email).toLowerCase().trim();
-    let seller = await Seller.findOne({ email: normalizedEmail });
-    let shouldSendWelcome = false;
-
-    if (!seller) {
-      seller = await Seller.create({
-        fullName: name || normalizedEmail.split("@")[0],
-        username: await createUniqueUsername(name || "seller"),
-        email: normalizedEmail,
-        phone: "",
-        shopName: "",
-        address: "",
-        bio: "",
-        avatar: picture || "",
-        authProvider: "google",
-        isVerified: true,
-        verifiedAt: new Date(),
-        verificationSource: "google",
-      });
-      shouldSendWelcome = true;
-    } else if (!seller.isVerified) {
-      clearVerificationState(seller, "google");
-      if (!seller.avatar && picture) {
-        seller.avatar = picture;
-      }
-      await seller.save();
-      shouldSendWelcome = true;
-    }
-
-    if (shouldSendWelcome) {
-      await sendSellerWelcomeMailOnce(seller);
-    }
-
-    const token = createSellerJwt(seller);
-
-    res.json({
-      token,
-      seller: serializeSeller(seller),
-    });
-  } catch (err) {
-    console.error("Google Seller Auth Error:", err);
-    res.status(400).json({ error: "Google login failed" });
-  }
-}
-
 export async function requestPasswordReset(req, res) {
   try {
     const { email } = req.body;
-    const seller = await Seller.findOne({ email: String(email || "").toLowerCase().trim() });
+    const seller = await Seller.findOne({ email: normalizeEmail(email) });
     if (!seller) return res.status(404).json({ error: "Seller not found" });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -341,7 +350,7 @@ export async function requestPasswordReset(req, res) {
 export async function resetPasswordWithOtp(req, res) {
   try {
     const { email, otp, newPassword } = req.body;
-    const seller = await Seller.findOne({ email: String(email || "").toLowerCase().trim() });
+    const seller = await Seller.findOne({ email: normalizeEmail(email) });
     if (!seller) return res.status(404).json({ error: "Seller not found" });
     if (!seller.otp || seller.otp !== otp) return res.status(400).json({ error: "Invalid OTP" });
     if (seller.otpExpiry < Date.now()) return res.status(400).json({ error: "OTP expired" });
@@ -360,7 +369,7 @@ export async function resetPasswordWithOtp(req, res) {
 export async function verifyOtp(req, res) {
   try {
     const { email, otp } = req.body;
-    const seller = await Seller.findOne({ email: String(email || "").toLowerCase().trim() });
+    const seller = await Seller.findOne({ email: normalizeEmail(email) });
     if (!seller) return res.status(404).json({ error: "Seller not found" });
     if (!seller.otp || seller.otp !== otp) return res.status(400).json({ error: "Invalid OTP" });
     if (seller.otpExpiry < Date.now()) return res.status(400).json({ error: "OTP expired" });
