@@ -233,15 +233,30 @@ export const googleFirebaseLogin = async (req, res) => {
   const { token } = req.body;
 
   try {
+    // ✅ 1. Token check
+    if (!token) {
+      return res.status(400).json({ message: "No token provided" });
+    }
+
+    // ✅ 2. Verify Firebase token
     const decodedToken = await adminAuth.verifyIdToken(token);
+
     const { uid, email, name, phone_number, picture } = decodedToken;
-    const normalizedEmail = String(email || "").toLowerCase().trim();
+
+    // ✅ 3. Email safety check (VERY IMPORTANT)
+    if (!email) {
+      return res.status(400).json({ message: "Google account has no email" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
 
     let user = await User.findOne({ email: normalizedEmail });
     let shouldSendWelcome = false;
 
+    // ✅ 4. Create user if not exists
     if (!user) {
       const hashedPassword = await bcrypt.hash(`${uid}-${normalizedEmail}`, 10);
+
       user = await User.create({
         fullName: name || normalizedEmail.split("@")[0],
         email: normalizedEmail,
@@ -253,20 +268,28 @@ export const googleFirebaseLogin = async (req, res) => {
         verifiedAt: new Date(),
         verificationSource: "google",
       });
+
       shouldSendWelcome = true;
-    } else if (!user.isVerified) {
+    }
+
+    // ✅ 5. Handle unverified user (same as your old logic)
+    else if (!user.isVerified) {
       clearVerificationState(user, "google");
+
       if (!user.profileImage && picture) {
         user.profileImage = picture;
       }
+
       await user.save();
       shouldSendWelcome = true;
     }
 
+    // ✅ 6. Send welcome mail
     if (shouldSendWelcome) {
       await sendWelcomeMailOnce(user);
     }
 
+    // ✅ 7. Generate JWT
     const jwtToken = createAuthToken(user);
 
     return res.status(200).json({
@@ -275,8 +298,12 @@ export const googleFirebaseLogin = async (req, res) => {
       user: serializeUser(user),
     });
   } catch (err) {
-    console.error("Firebase Google Auth Error:", err);
-    return res.status(500).json({ message: "Google authentication failed" });
+    // ✅ 8. Better error logging (IMPORTANT)
+    console.error("🔥 Firebase Google Auth Error FULL:", err);
+
+    return res.status(500).json({
+      message: err.message || "Google authentication failed",
+    });
   }
 };
 
