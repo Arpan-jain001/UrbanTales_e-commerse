@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { HashLoader } from "react-spinners"; 
 import Navbar from "../Components/Navbar"; 
 import Footer from "../Components/Footer"; 
-
+import arpanJain from '../assets/arpan-jain.png';
 
 const AboutUs = () => {
   const [loading, setLoading] = useState(true);
@@ -33,8 +33,8 @@ const AboutUs = () => {
     {
       id: 1,
       name: 'Arpan Jain',
-      role: 'Frontend Developer',
-      image: 'https://media.licdn.com/dms/image/v2/D5603AQEYmfPkqD-s_g/profile-displayphoto-scale_400_400/B56Zfg8h4sHoAg-/0/1751825655791?e=1755734400&v=beta&t=DpsBR8XtyA1Uhwrq6O5K9X1V3mooLYCinr6EMZme81I', // Placeholder image
+      role: 'Full Stack Developer | QA & Testing',
+      image: arpanJain, // Placeholder image
       linkedin: 'https://www.linkedin.com/in/arpan-jain-42386b2a7/', // Updated LinkedIn URL
       whatsapp: 'https://wa.me/6399003541', // Replace with actual WhatsApp number
     },
